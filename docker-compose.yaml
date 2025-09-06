@@ -1,5 +1,5 @@
 services:
-  core_regulus_backend:
+  novakey_backend:
     build: .
     ports:
       - "5001:5000"
