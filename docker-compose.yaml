@@ -1,0 +1,18 @@
+services:
+  core_regulus_backend:
+    build: .
+    ports:
+      - "5001:5000"
+    restart: unless-stopped
+    networks:
+      - shared_net
+    environment:
+      - ENVIRONMENT=production
+      - DB_HOST
+      - DB_PORT
+      - DB_NAME
+      - DB_USER
+      - DB_PASSWORD
+networks:
+  shared_net:
+    external: true

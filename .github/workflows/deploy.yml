@@ -1,0 +1,49 @@
+name: NovaKey Deploy
+run-name: ${{ github.actor }} is deploying the project
+
+on:
+  push:
+    branches: [ production ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: Personal Projects
+
+    steps:
+      - name: Cleanup docker volumes
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH }}
+          port: 22
+          script: |
+            docker system prune -a --volumes -f
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Deploy to server
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          port: 22
+          key: ${{secrets.SSH}}
+          source: "*"
+          target: "/home/ci/core-regulus/novakey/backend"
+      - name: Docker Compose
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH }}
+          port: 22
+          script: |
+            cd /home/ci/core-regulus/novakey/backend
+            echo "DB_HOST=${{ secrets.DB_HOST }}" > .env
+            echo "DB_PORT=${{ secrets.DB_PORT }}" >> .env
+            echo "DB_USER=${{ secrets.DB_USER }}" >> .env
+            echo "DB_NAME=${{ secrets.DB_NAME }}" >> .env
+            echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
+            docker compose down
+            docker compose up --build -d
