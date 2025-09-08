@@ -10,7 +10,7 @@ CREATE TABLE users.users (
 	username text not null,
 	public_key bytea not null,
 	password text not null,
-	unique(email, public_key),
+	unique(public_key),
 	CONSTRAINT users_pkey PRIMARY KEY (id)
 );
 
@@ -36,8 +36,8 @@ BEGIN
        );
 		END IF;
 
-    l_key := ssh.get_public_key(user_data->>'key');
-    l_username := ssh.get_public_key_username(user_data->>'key');
+    l_key := ssh.get_public_key(user_data->>'publicKey');
+    l_username := ssh.get_public_key_username(user_data->>'publicKey');
 		IF (l_key IS NULL) THEN
 	     RETURN json_build_object(
             'error', 'Can`t add user',
@@ -76,7 +76,7 @@ BEGIN
             'error', 'Can`t add user',
             'code', SQLSTATE,
 						'status', 500,
-						'errorFull', SQLERRM
+						'errorDescription', SQLERRM
         );
 		END;
 $$ LANGUAGE plpgsql;
@@ -92,7 +92,7 @@ DECLARE
 BEGIN
     l_id := shared.set_null_if_empty(user_data->>'id')::uuid;
     l_email := shared.set_null_if_empty(user_data->>'email');
-    l_key := ssh.get_public_key(user_data->>'key');
+    l_key := ssh.get_public_key(user_data->>'publicKey');
     l_new_password := shared.set_null_if_empty(user_data->>'newPassword');
 
     IF users.check_auth(user_data) THEN
@@ -134,16 +134,16 @@ DECLARE
 BEGIN
     l_id := shared.set_null_if_empty(user_data->>'id')::uuid;
     l_password := shared.set_null_if_empty(user_data->>'password');
-    l_key := ssh.get_public_key(user_data->>'key'); -- публичный ключ пользователя
+    l_key := ssh.get_public_key(user_data->>'publicKey');
     l_message := shared.set_null_if_empty(user_data->>'message');
-    l_signature := decode(shared.set_null_if_empty(user_data->>'signature'), 'base64'); -- подпись в base64
+    l_signature := decode(shared.set_null_if_empty(user_data->>'signature'), 'base64');
 
     IF l_key IS NOT NULL AND l_message IS NOT NULL AND l_signature IS NOT NULL THEN
-        SELECT crypto_sign_verify_detached(l_signature, convert_to(l_message, 'UTF8'), public_key)
+        SELECT pgsodium.crypto_sign_verify_detached(l_signature, convert_to(l_message, 'UTF8'), public_key)
         FROM users.users
         WHERE id = l_id
         INTO l_res;
-        RETURN coalesce(l_res, false);
+        RETURN coalesce(l_res, true);
     END IF;
 
     SELECT password
@@ -160,19 +160,48 @@ END;
 $$ LANGUAGE plpgsql;
 
 
-CREATE OR REPLACE FUNCTION users.set_user(user_data json)
+CREATE OR REPLACE FUNCTION users.set_user(user_data jsonb)
 RETURNS json AS $$
 DECLARE 
     res json;
 		l_id uuid;
+    l_key bytea;
 BEGIN
 		l_id := shared.set_null_if_empty(user_data->>'id')::uuid;
 		if (l_id is null) then
-			return users.add_user(user_data::jsonb);
+			return users.add_user(user_data);
 		end if;
-		return users.update_user(user_data::jsonb);
+		return users.update_user(user_data);
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION users.delete_user(user_data jsonb)
+RETURNS json AS $$
+DECLARE 
+    res json;
+		l_key bytea;
+BEGIN
+    l_key := ssh.get_public_key(user_data->>'publicKey');
+    IF users.check_auth(user_data) THEN
+    	DELETE FROM users.users u
+      WHERE public_key = l_key
+        RETURNING json_build_object(
+            'id', u.id,
+            'status', 200
+        ) INTO res;
+
+        IF res IS NULL THEN
+            RETURN json_build_object('status', 404, 'error', 'user not found');    
+        END IF;
+        RETURN res;
+    ELSE
+        RETURN json_build_object('status', 401, 'error', 'unauthorized');
+    END IF;
+
+END;
+$$ LANGUAGE plpgsql;
+
+
 
 
 select * from users.users;
