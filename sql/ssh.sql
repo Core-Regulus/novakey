@@ -2,6 +2,9 @@ CREATE SCHEMA ssh;
 
 CREATE OR REPLACE FUNCTION ssh.public_key_to_bytea(pubkey TEXT)
 RETURNS BYTEA AS $$
+DECLARE
+	l_decoded BYTEA;
+	len int;
 BEGIN
   IF pubkey IS NULL THEN
     RETURN NULL;
@@ -11,7 +14,10 @@ BEGIN
     RAISE EXCEPTION 'Unsupported key type: %', split_part(pubkey, ' ', 1);
   END IF;
 
-  RETURN decode(split_part(pubkey, ' ', 2), 'base64');
+  l_decoded := decode(split_part(pubkey, ' ', 2), 'base64');
+
+	len := octet_length(l_decoded);  
+  RETURN substring(l_decoded FROM len - 32 + 1 FOR 32);
 END;
 $$ LANGUAGE plpgsql IMMUTABLE STRICT;
 

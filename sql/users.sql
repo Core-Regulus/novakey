@@ -126,24 +126,23 @@ DECLARE
     l_id uuid;
     l_password text; 
     l_key bytea;
-    l_message text;
+    l_message bytea;
     l_signature bytea;
     l_public_key bytea;
     l_hashed_password text;
     l_res bool;
 BEGIN
-    l_id := shared.set_null_if_empty(user_data->>'id')::uuid;
     l_password := shared.set_null_if_empty(user_data->>'password');
     l_key := ssh.get_public_key(user_data->>'publicKey');
-    l_message := shared.set_null_if_empty(user_data->>'message');
+		l_message := decode(shared.set_null_if_empty(user_data->>'message'), 'base64');
     l_signature := decode(shared.set_null_if_empty(user_data->>'signature'), 'base64');
 
     IF l_key IS NOT NULL AND l_message IS NOT NULL AND l_signature IS NOT NULL THEN
-        SELECT pgsodium.crypto_sign_verify_detached(l_signature, convert_to(l_message, 'UTF8'), public_key)
+        SELECT pgsodium.crypto_sign_verify_detached(l_signature, l_message, public_key)
         FROM users.users
-        WHERE id = l_id
+        WHERE public_key = l_key
         INTO l_res;
-        RETURN coalesce(l_res, true);
+				RETURN coalesce(l_res, false);
     END IF;
 
     SELECT password
