@@ -46,7 +46,7 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION shared.verify_password(password text, hashed text)
 RETURNS boolean AS $$
-BEGIN
+BEGIN		
     RETURN crypt(password, hashed) = hashed;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
@@ -69,5 +69,45 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION shared.check_auth(user_data jsonb)
+RETURNS bool AS $$
+DECLARE 
+    l_id uuid;
+    l_password text; 
+    l_key bytea;
+    l_message bytea;
+    l_signature bytea;
+    l_public_key bytea;
+    l_hashed_password text;
+    l_res bool;
+BEGIN
+		l_id := shared.set_null_if_empty(user_data->>'id');    
+		l_password := shared.set_null_if_empty(user_data->>'password');
+    l_key := ssh.get_public_key(user_data->>'publicKey');
+		l_message := decode(shared.set_null_if_empty(user_data->>'message'), 'base64');
+    l_signature := decode(shared.set_null_if_empty(user_data->>'signature'), 'base64');
+
+    IF l_key IS NOT NULL AND l_message IS NOT NULL AND l_signature IS NOT NULL THEN       
+			SELECT pgsodium.crypto_sign_verify_detached(l_signature, l_message, public_key)
+        FROM users.users
+        WHERE public_key = l_key
+        INTO l_res;
+				IF l_res IS NOT NULL THEN 
+					RETURN l_res;
+				END IF;
+    END IF;
+		   		
+		SELECT password
+      INTO l_hashed_password
+      FROM users.users
+      WHERE id = l_id;
+
+		IF l_hashed_password IS NULL THEN
+        RETURN FALSE;
+    END IF;
+		
+    RETURN shared.verify_password(l_password, l_hashed_password);
+END;
+$$ LANGUAGE plpgsql;
 
 

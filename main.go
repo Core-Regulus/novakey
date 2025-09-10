@@ -1,9 +1,10 @@
 package main
 
-import (	
-	"novakey/internal/db"	
-	"novakey/internal/users"
+import (
 	"log"
+	"novakey/internal/db"
+	"novakey/internal/users"
+	"novakey/internal/workspaces"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 )
@@ -17,5 +18,6 @@ func main() {
 	}))
 	db.Connect()	
 	users.InitRoutes(app)
+	workspaces.InitRoutes(app)
 	log.Fatal(app.Listen(":5000"))
 }

@@ -6,7 +6,7 @@ DECLARE
 	l_decoded BYTEA;
 	len int;
 BEGIN
-  IF pubkey IS NULL THEN
+  IF shared.is_empty(pubkey) = TRUE THEN
     RETURN NULL;
   END IF;
 

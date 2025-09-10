@@ -1,53 +1,66 @@
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-CREATE EXTENSION IF NOT EXISTS pgsodium;
+create schema if not exists workspaces;
 
-CREATE TABLE users.users (
+CREATE TABLE workspaces.workspaces (
 	id uuid DEFAULT gen_random_uuid() NOT NULL,
-	create_time timestamptz DEFAULT now() NOT NULL,
-	update_time timestamptz DEFAULT now() NOT NULL,
-	last_visited timestamptz DEFAULT now() NOT null,	 
+	name text not null,
 	email text not null,
-	username text not null,
+	create_time timestamptz DEFAULT now() NOT NULL,
+	update_time timestamptz DEFAULT now() NOT NULL,	 
 	public_key bytea not null,
 	password text not null,
 	unique(public_key),
 	CONSTRAINT users_pkey PRIMARY KEY (id)
 );
 
-create table users.users_to_projects (
-	user_id uuid references users.users (id),
-	project_code text references projects.projects (code),
-	primary key (user_id, project_code)
-);
 
-create index on users.users_to_projects using hash (user_id);
-create index on users.users_to_projects using hash (project_code);
+CREATE OR REPLACE FUNCTION workspaces.set_workspace(user_data jsonb)
+RETURNS json AS $$
+DECLARE 
+    res json;
+		l_id uuid;
+    l_key bytea;
+BEGIN
+		l_id := shared.set_null_if_empty(user_data->>'id')::uuid;
+		if (l_id is null) then
+			return workspaces.add_workspace(user_data);
+		end if;
+		return workspaces.update_workspace(user_data);
+END;
+$$ LANGUAGE plpgsql;
 
- 
-CREATE OR REPLACE FUNCTION users.add_user(user_data jsonb)
+CREATE OR REPLACE FUNCTION workspaces.add_workspace(user_data jsonb)
 RETURNS json AS $$
 DECLARE 
     res json;
     l_key bytea;
-		l_username text;
     l_password text;
     l_email text;
+		l_name text;
     l_password_plain text;
 BEGIN
     l_email := shared.set_null_if_empty(user_data->>'email');
 		IF (l_email IS NULL) THEN
 	     RETURN json_build_object(
-            'error', 'Can`t add user',
+            'error', 'Can`t add workspace',
             'code', 'EMAIL_IS_EMPTY',
 						'status', 400
        );
 		END IF;
 
+    l_name := shared.set_null_if_empty(user_data->>'name');
+		IF (l_name IS NULL) THEN
+	     RETURN json_build_object(
+            'error', 'Can`t add workspace',
+            'code', 'NAME_IS_EMPTY',
+						'status', 400
+       );
+		END IF;
+
+
     l_key := ssh.get_public_key(user_data->>'publicKey');
-    l_username := ssh.get_public_key_username(user_data->>'publicKey');
 		IF (l_key IS NULL) THEN
 	     RETURN json_build_object(
-            'error', 'Can`t add user',
+            'error', 'Can`t add workspace',
             'code', 'PUBLIC_KEY_IS_EMPTY',
 						'status', 400
        );
@@ -56,21 +69,21 @@ BEGIN
     l_password_plain := shared.generate_password(16);
     l_password := shared.hash_password(l_password_plain);
 	
-    INSERT INTO users.users (
+    INSERT INTO workspaces.workspaces (
         email,
-				username,
+				name,
         public_key,
         password
     )
     VALUES (
         l_email,
-				l_username,
+				l_name,
         l_key,				
         l_password
     )
     RETURNING json_build_object(
         'id', id,
-				'username', l_username,
+				'name', l_name,
         'password', l_password_plain,
 				'status',	200
     ) INTO res;
@@ -80,7 +93,7 @@ BEGIN
 		EXCEPTION
     	WHEN others THEN
         RETURN json_build_object(
-            'error', 'Can`t add user',
+            'error', 'Can`t add workspace',
             'code', SQLSTATE,
 						'status', 500,
 						'errorDescription', SQLERRM
@@ -88,24 +101,27 @@ BEGIN
 		END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION users.update_user(user_data jsonb)
+CREATE OR REPLACE FUNCTION workspaces.update_workspace(user_data jsonb)
 RETURNS json AS $$
 DECLARE 
     res json;
     l_id uuid;
     l_email text;
+    l_name text;
     l_key bytea;
     l_new_password text; 
 BEGIN
     l_id := shared.set_null_if_empty(user_data->>'id')::uuid;
     l_email := shared.set_null_if_empty(user_data->>'email');
+    l_name := shared.set_null_if_empty(user_data->>'name');
     l_key := ssh.get_public_key(user_data->>'publicKey');
     l_new_password := shared.set_null_if_empty(user_data->>'newPassword');
 
     IF shared.check_auth(user_data) THEN
-    	UPDATE users.users u
+    	UPDATE workspaces.workspaces u
         SET
             email = COALESCE(l_email, u.email),
+            name = COALESCE(l_name, u.name),
             public_key = COALESCE(l_key, u.public_key),
             last_visited = now(),
             password = COALESCE(shared.hash_password(l_new_password), u.password)
@@ -117,7 +133,7 @@ BEGIN
         ) INTO res;
 
         IF res IS NULL THEN
-            RETURN json_build_object('status', 404, 'error', 'user not found');    
+            RETURN json_build_object('status', 404, 'error', 'workspace not found');    
         END IF;
         RETURN res;
     ELSE
@@ -126,23 +142,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-
-CREATE OR REPLACE FUNCTION users.set_user(user_data jsonb)
-RETURNS json AS $$
-DECLARE 
-    res json;
-		l_id uuid;
-    l_key bytea;
-BEGIN
-		l_id := shared.set_null_if_empty(user_data->>'id')::uuid;
-		if (l_id is null) then
-			return users.add_user(user_data);
-		end if;
-		return users.update_user(user_data);
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION users.delete_user(user_data jsonb)
+CREATE OR REPLACE FUNCTION workspaces.delete_workspace(user_data jsonb)
 RETURNS json AS $$
 DECLARE 
     res json;
@@ -152,7 +152,7 @@ BEGIN
 		l_id := shared.set_null_if_empty(user_data->>'id')::uuid;    
 		l_key := ssh.get_public_key(user_data->>'publicKey');		
     IF shared.check_auth(user_data) = TRUE THEN
-    	DELETE FROM users.users u
+    	DELETE FROM workspaces.workspaces u
       	WHERE public_key = l_key or id = l_id
         RETURNING json_build_object(
             'id', u.id,
@@ -160,7 +160,7 @@ BEGIN
         ) INTO res;
 
         IF res IS NULL THEN
-            RETURN json_build_object('status', 404, 'error', 'user not found');    
+            RETURN json_build_object('status', 404, 'error', 'workspace not found');    
         END IF;
         RETURN res;
     ELSE
@@ -169,6 +169,3 @@ BEGIN
 
 END;
 $$ LANGUAGE plpgsql;
-
-
-select * from users.users;
