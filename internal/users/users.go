@@ -39,6 +39,7 @@ type DeleteUserResponse struct {
 	Id								string   `json:"id,omitempty"`		
   Code      				string   `json:"code,omitempty"`
 	Status						int   	 `json:"status,omitempty"`
+	Error     				string 	 `json:"error,omitempty"`
 	ErrorDescription 	string 	 `json:"errorDescription,omitempty"`
 }
 

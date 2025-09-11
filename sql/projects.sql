@@ -6,6 +6,8 @@ create table projects.projects(
 	description text
 );
 
+
+
 create index on projects.projects using hash (workspace_id);
 
 

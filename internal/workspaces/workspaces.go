@@ -15,7 +15,8 @@ type SetProjectRequest struct {
 
 type SetWorkspaceRequest struct {	
   Id  						string `json:"id,omitempty"`
-	Email  					string `json:"email"`		  	
+	Email  					string `json:"email"`
+	Name  					string `json:"name"`
 	PublicKey    		string `json:"publicKey"`
 	Signature 			string `json:"signature"`
   Message   			string `json:"message"`  
@@ -45,6 +46,7 @@ type DeleteWorkspaceRequest struct {
 type DeleteWorkspaceResponse struct {
 	Id								string   `json:"id,omitempty"`		
   Code      				string   `json:"code,omitempty"`
+	Error     				string 	 `json:"error,omitempty"`
 	Status						int   	 `json:"status,omitempty"`
 	ErrorDescription 	string 	 `json:"errorDescription,omitempty"`
 }
