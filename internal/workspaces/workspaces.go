@@ -3,6 +3,7 @@ package workspaces
 import (
 	"github.com/gofiber/fiber/v2"
 	"novakey/internal/requestHandler"
+	"novakey/internal/users"
 	"github.com/google/uuid"
 )
 
@@ -14,41 +15,25 @@ type SetProjectRequest struct {
 
 
 type SetWorkspaceRequest struct {	
-  Id  						string `json:"id,omitempty"`
-	Email  					string `json:"email"`
-	Name  					string `json:"name"`
-	PublicKey    		string `json:"publicKey"`
-	Signature 			string `json:"signature"`
-  Message   			string `json:"message"`  
-  Timestamp 			int64  `json:"timestamp"`  
-	Password 				string `json:"password,omitempty"`
+  Id  						string 						`json:"id,omitempty"`
+	Name  					string 						`json:"name"`
+	User						users.AuthEntity 	`json:"user"`		
 	Projects   			[]SetProjectRequest `json:"projects,omitempty"`
 }
 
 type SetWorkspaceResponse struct {
-	Id								string   `json:"id,omitempty"`			
-	Password					string   `json:"password,omitempty"`
-	Error     				string 	 `json:"error,omitempty"`
-  Code      				string   `json:"code,omitempty"`
-	Status						int   	 `json:"status,omitempty"`
-	ErrorDescription 	string 	 `json:"errorDescription,omitempty"`
+	Id 					 			string 	 `json:"id,omitempty"`		
+	requesthandler.ErrorResponse
 }
 
 type DeleteWorkspaceRequest struct {    
-	Id								string `json:"id,omitempty"`		 
-	Signature 				string `json:"signature"`
-  Message   				string `json:"message"`  
-  Timestamp 				int64  `json:"timestamp"`  
-	PublicKey    			string `json:"publicKey"`
-	Password 					string `json:"password,omitempty"`
+	Id  			string `json:"id"`
+	User			users.AuthEntity `json:"user"`
 }
 
 type DeleteWorkspaceResponse struct {
-	Id								string   `json:"id,omitempty"`		
-  Code      				string   `json:"code,omitempty"`
-	Error     				string 	 `json:"error,omitempty"`
-	Status						int   	 `json:"status,omitempty"`
-	ErrorDescription 	string 	 `json:"errorDescription,omitempty"`
+	Id  							string 	 `json:"id,omitempty"`
+  requesthandler.ErrorResponse
 }
 
 func InitRoutes(app *fiber.App) {	

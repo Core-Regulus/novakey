@@ -4,7 +4,7 @@ CREATE OR REPLACE FUNCTION shared.is_empty(value text)
 RETURNS bool AS $$
 DECLARE 
 BEGIN
-		return (value is null) or (value = '');
+		return (value is null) or (value = '') or (value = '00000000-0000-0000-0000-000000000000');
 END;
 $$ LANGUAGE plpgsql;
 

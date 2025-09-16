@@ -5,42 +5,35 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+type AuthEntity struct {
+	Id 				string `json:"id,omitempty"`
+	PublicKey string `json:"publicKey"`
+	Signature string `json:"signature"`
+	Message   string `json:"message"`  
+	Timestamp int64  `json:"timestamp"`  
+	Password 	string `json:"password,omitempty"`
+}
+
 type SetUserRequest struct {	
-  Id  						string `json:"id,omitempty"`
-	Email  					string `json:"email"`		  	
-	PublicKey    		string `json:"publicKey"`
-	Signature 			string `json:"signature"`
-  Message   			string `json:"message"`  
-  Timestamp 			int64  `json:"timestamp"`  
-	Password 				string `json:"password,omitempty"`
+	AuthEntity
+	Email							string   `json:"email,omitempty"`
 	ProjectCodes   []string `json:"projectCodes,omitempty"`
 }
 
-type SetUserResponse struct {
-	Id								string   `json:"id,omitempty"`
+type SetUserResponse struct {	
+	Id								string   `json:"id,omitempty"`	
 	Username					string   `json:"username,omitempty"`
 	Password					string   `json:"password,omitempty"`
-	Error     				string 	 `json:"error,omitempty"`
-  Code      				string   `json:"code,omitempty"`
-	Status						int   	 `json:"status,omitempty"`
-	ErrorDescription 	string 	 `json:"errorDescription,omitempty"`
+	requesthandler.ErrorResponse
 }
 
 type DeleteUserRequest struct {
-	Id								string `json:"id,omitempty"`		 
-	Signature 				string `json:"signature"`
-  Message   				string `json:"message"`  
-  Timestamp 				int64  `json:"timestamp"`  
-	PublicKey    			string `json:"publicKey"`
-	Password 					string `json:"password,omitempty"`
+	AuthEntity
 }
 
 type DeleteUserResponse struct {
 	Id								string   `json:"id,omitempty"`		
-  Code      				string   `json:"code,omitempty"`
-	Status						int   	 `json:"status,omitempty"`
-	Error     				string 	 `json:"error,omitempty"`
-	ErrorDescription 	string 	 `json:"errorDescription,omitempty"`
+  requesthandler.ErrorResponse
 }
 
 func InitRoutes(app *fiber.App) {	

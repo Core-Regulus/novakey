@@ -121,6 +121,8 @@ BEGIN
 					RETURN l_res;
 				END IF;
     END IF;
+
+		--raise exception 'checking password %', entity.password;
 		   		
 		SELECT id, password
       INTO l_res, l_hashed_password
@@ -151,7 +153,7 @@ BEGIN
 		RAISE EXCEPTION 
 			USING
 				ERRCODE = 'EJSON', 
-				DETAIL = json_build_object('code', 'UNAUTHORIZED', 'status', 401)::text;    
+				DETAIL = json_build_object('code', 'UNAUTHORIZED', 'status', 401)::text;
 	END IF;
 	RETURN l_res;
 END;
