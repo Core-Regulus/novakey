@@ -89,7 +89,6 @@ BEGIN
       WHERE id = l_id
       	RETURNING json_build_object(
         	'id', u.id,
-          'password', l_new_password,
           'status', 200
        	) INTO res;
 

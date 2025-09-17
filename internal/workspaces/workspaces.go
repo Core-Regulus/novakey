@@ -1,38 +1,31 @@
 package workspaces
 
 import (
-	"github.com/gofiber/fiber/v2"
 	"novakey/internal/requestHandler"
 	"novakey/internal/users"
+	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 )
 
-type SetProjectRequest struct {
-	Id 					uuid.UUID 	`json:"id"`	
-	Name 				string 			`json:"name"`
-	Description string 			`json:"description"`
-}
-
 
 type SetWorkspaceRequest struct {	
-  Id  						string 						`json:"id,omitempty"`
+  Id  						uuid.UUID 				`json:"id,omitempty"`
 	Name  					string 						`json:"name"`
-	User						users.AuthEntity 	`json:"user"`		
-	Projects   			[]SetProjectRequest `json:"projects,omitempty"`
+	User						users.AuthEntity 	`json:"user"`	
 }
 
 type SetWorkspaceResponse struct {
-	Id 					 			string 	 `json:"id,omitempty"`		
+	Id 					 		uuid.UUID 	 `json:"id,omitempty"`		
 	requesthandler.ErrorResponse
 }
 
 type DeleteWorkspaceRequest struct {    
-	Id  			string `json:"id"`
-	User			users.AuthEntity `json:"user"`
+	Id  						uuid.UUID `json:"id"`
+	User						users.AuthEntity `json:"user"`
 }
 
 type DeleteWorkspaceResponse struct {
-	Id  							string 	 `json:"id,omitempty"`
+	Id  						uuid.UUID 	 `json:"id,omitempty"`
   requesthandler.ErrorResponse
 }
 
