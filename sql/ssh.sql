@@ -20,6 +20,11 @@ CREATE TYPE ssh.AuthEntity AS (
     new_password text
 );
 
+create type ssh.EntityResult as (
+	data jsonb,
+	entity ssh.AuthEntity
+);
+
 
 CREATE OR REPLACE FUNCTION ssh.public_key_to_bytea(pubkey TEXT)
 RETURNS BYTEA AS $$
@@ -122,8 +127,6 @@ BEGIN
 				END IF;
     END IF;
 
-		--raise exception 'checking password %', entity.password;
-		   		
 		SELECT id, password
       INTO l_res, l_hashed_password
       FROM ssh.keys
@@ -132,9 +135,7 @@ BEGIN
 		IF l_hashed_password IS NULL THEN
         RETURN NULL;
     END IF;
-
-				
-
+		
     IF ssh.verify_password(entity.password, l_hashed_password) = TRUE THEN			
 			return l_res;
 		END IF;
@@ -143,21 +144,39 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+
 CREATE OR REPLACE FUNCTION ssh.check_auth_force(entity ssh.AuthEntity)
-RETURNS uuid AS $$
-DECLARE
-	l_res uuid;
+RETURNS ssh.AuthEntity AS $$
 BEGIN
-	l_res := ssh.check_auth(entity);
-	IF l_res IS NULL THEN
+	entity.id := ssh.check_auth(entity);
+	IF entity.id IS NULL THEN
 		RAISE EXCEPTION 
 			USING
 				ERRCODE = 'EJSON', 
 				DETAIL = json_build_object('code', 'UNAUTHORIZED', 'status', 401)::text;
 	END IF;
-	RETURN l_res;
+	RETURN entity;
 END;
 $$ LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE FUNCTION ssh.check_auth_force(user_data jsonb)
+RETURNS ssh.AuthEntity AS $$
+DECLARE
+	l_entity ssh.AuthEntity;
+BEGIN
+	l_entity := ssh.get_auth_entity(user_data);
+	l_entity.id := ssh.check_auth(l_entity);
+	IF l_entity.id IS NULL THEN
+		RAISE EXCEPTION
+			USING
+				ERRCODE = 'EJSON', 
+				DETAIL = json_build_object('code', 'UNAUTHORIZED', 'status', 401)::text;
+	END IF;
+	RETURN l_entity;
+END;
+$$ LANGUAGE plpgsql;
+
 
 
 CREATE OR REPLACE FUNCTION ssh.get_auth_entity(user_data jsonb)
@@ -174,6 +193,22 @@ BEGIN
 	 return l_entity;
 END;
 $$ LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE FUNCTION ssh.get_signer(signer_data jsonb, default_signer ssh.AuthEntity)
+RETURNS ssh.AuthEntity AS $$
+DECLARE 	
+	l_signer ssh.AuthEntity;
+BEGIN
+	l_signer := ssh.get_auth_entity(signer_data);
+	l_signer.id := ssh.check_auth(l_signer);
+	if (l_signer.id is null) then 
+		return default_signer;
+	end if;
+	return l_signer;		 
+END;
+$$ LANGUAGE plpgsql;
+
 
 
 CREATE OR REPLACE FUNCTION ssh.add_key(entity ssh.AuthEntity)
@@ -215,8 +250,6 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION ssh.update_key(entity ssh.AuthEntity)
 RETURNS ssh.AuthEntity AS $$
-DECLARE
-	l_id uuid;
 BEGIN
    UPDATE ssh.keys s
    	SET
@@ -225,9 +258,9 @@ BEGIN
       password = COALESCE(shared.hash_password(entity.new_password), s.password)
     WHERE id = entity.id
     	RETURNING id				
-			INTO l_id;
+			INTO entity.id;
 
-    IF l_id IS NULL THEN
+    IF entity.id IS NULL THEN
 			RETURN ssh.add_key(entity);
     END IF;
 		RETURN entity;

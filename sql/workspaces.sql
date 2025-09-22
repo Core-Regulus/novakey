@@ -34,7 +34,6 @@ DECLARE
     l_email text;
 		l_name text;
 		l_id uuid;
-		l_owner_id uuid;
 		l_entity ssh.AuthEntity;
 BEGIN
     l_name := shared.set_null_if_empty(workspace_data->>'name');
@@ -45,15 +44,15 @@ BEGIN
 					DETAIL = json_build_object('code', 'NAME_IS_EMPTY', 'status', 400)::text;
 		END IF;
 
-		l_entity := ssh.get_auth_entity(workspace_data->'user');
-		l_owner_id := ssh.check_auth_force(l_entity);
+		l_entity := ssh.check_auth_force(workspace_data->'signer');
+
     INSERT INTO workspaces.workspaces (
 				name,
 				owner
     )
     VALUES (
 				l_name,
-				l_owner_id
+				l_entity.id
     )
     RETURNING id
 		INTO l_id;
@@ -77,7 +76,7 @@ DECLARE
 BEGIN
     l_id := shared.set_null_if_empty(workspace_data->>'id');
     l_name := shared.set_null_if_empty(workspace_data->>'name');
-		l_entity := ssh.get_auth_entity(workspace_data->'user');
+		l_entity := ssh.get_auth_entity(workspace_data->'signer');
 		l_owner := shared.set_null_if_empty(workspace_data->>'newOwner');
 		PERFORM workspaces.check_access_force(l_entity, l_id);
 
@@ -112,7 +111,7 @@ DECLARE
 		v_detail text;
 BEGIN
   l_id := shared.set_null_if_empty(workspace_data->>'id');
-	l_entity := ssh.get_auth_entity(workspace_data->'user');
+	l_entity := ssh.get_auth_entity(workspace_data->'signer');
 	PERFORM workspaces.check_access_force(l_entity, l_id);
 
   DELETE FROM workspaces.workspaces u
@@ -142,12 +141,11 @@ CREATE OR REPLACE FUNCTION workspaces.check_access_force(entity ssh.AuthEntity, 
 RETURNS void AS $$
 DECLARE
 	l_res uuid;
-	l_owner uuid;
 	l_workspace_id uuid;	
 BEGIN
-	l_owner := ssh.check_auth_force(entity);
+	entity := ssh.check_auth_force(entity);
 	select id from workspaces.workspaces
-	where id = workspace_id and owner = l_owner
+	where id = workspace_id and owner = entity.id
 	into l_workspace_id;	
 	if (l_workspace_id is null) then
 		raise exception 

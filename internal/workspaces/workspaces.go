@@ -11,7 +11,7 @@ import (
 type SetWorkspaceRequest struct {	
   Id  						uuid.UUID 				`json:"id,omitempty"`
 	Name  					string 						`json:"name"`
-	User						users.AuthEntity 	`json:"user"`	
+	Signer					users.AuthEntity 	`json:"signer"`	
 }
 
 type SetWorkspaceResponse struct {
@@ -21,7 +21,7 @@ type SetWorkspaceResponse struct {
 
 type DeleteWorkspaceRequest struct {    
 	Id  						uuid.UUID `json:"id"`
-	User						users.AuthEntity `json:"user"`
+	Signer					users.AuthEntity `json:"signer"`
 }
 
 type DeleteWorkspaceResponse struct {

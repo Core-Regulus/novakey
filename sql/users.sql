@@ -1,6 +1,7 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS pgsodium;
 
+
 CREATE TABLE users.users (
 	id uuid primary key DEFAULT gen_random_uuid() NOT NULL,
 	create_time timestamptz DEFAULT now() NOT NULL,
@@ -11,22 +12,35 @@ CREATE TABLE users.users (
 );
 
 
-create table users.users_to_projects (
-	user_id uuid references users.users (id),
-	project_id uuid references projects.projects (id),
+create table users.users_workspaces (
+	user_id 			uuid references users.users (id) on delete cascade,
+	workspace_id 	uuid references workspaces.workspaces (id) on delete cascade,	
+	role_code			ltree references roles.roles (code),
+	check (role_code <@ 'root.workspace'),
+	primary key (user_id, workspace_id)
+);
+
+create index on users.users_workspaces using hash (user_id);
+create index on users.users_workspaces using hash (workspace_id);
+
+create table if not exists users.users_project (
+	user_id 			uuid references users.users (id) on delete cascade,
+	project_id 		uuid references projects.projects (id) on delete cascade,	
+	role_code			ltree references roles.roles (code),
+	check (role_code <@ 'root.workspace.project'),
 	primary key (user_id, project_id)
 );
 
-create index on users.users_to_projects using hash (user_id);
-create index on users.users_to_projects using hash (project_code);
+create index on users.users_workspaces using hash (user_id);
+create index on users.users_workspaces using hash (workspace_id);
 
- 
 CREATE OR REPLACE FUNCTION users.add_user(user_data jsonb)
-RETURNS json AS $$
+RETURNS ssh.EntityResult AS $$
 DECLARE 
 		l_id uuid;
 		l_username text;
     l_email text;
+		l_res ssh.EntityResult;
 		l_entity ssh.AuthEntity;
 BEGIN
     l_email := shared.set_null_if_empty(user_data->>'email');
@@ -34,7 +48,7 @@ BEGIN
 			RAISE EXCEPTION 
       	USING 
 					ERRCODE = 'EJSON', 
-					DETAIL = json_build_object('code', 'EMAIL_IS_EMPTY', 'status', 400)::text;
+					DETAIL = jsonb_build_object('code', 'EMAIL_IS_EMPTY', 'status', 400)::text;
 		END IF;
     
     l_username := ssh.get_public_key_username(user_data->>'publicKey');
@@ -50,69 +64,76 @@ BEGIN
     RETURNING id
 		INTO l_id;
 
-		l_entity := ssh.get_auth_entity(user_data);
-		l_entity.id := l_id;		
-		l_entity := ssh.add_key(l_entity);
-
-    RETURN json_build_object(
+		l_res.entity := ssh.get_auth_entity(user_data);
+		l_res.entity.id := l_id;
+		l_res.entity := ssh.add_key(l_res.entity);
+		l_entity := l_res.entity;
+		l_res.data := jsonb_build_object(
         'id', l_id,
 				'username', l_username,
         'password', l_entity.password,
 				'status',	200
-    );		
+    );
+    RETURN l_res;
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION users.update_user(user_data jsonb)
-RETURNS json AS $$
+RETURNS ssh.EntityResult AS $$
 DECLARE 
-    res json;
     l_id uuid;
     l_email text;
-		l_entity ssh.AuthEntity;
-
+		l_res ssh.EntityResult;
 BEGIN
 	l_id := shared.set_null_if_empty(user_data->>'id')::uuid;
   l_email := shared.set_null_if_empty(user_data->>'email');        
-	l_entity := ssh.get_auth_entity(user_data);
-  PERFORM ssh.check_auth_force(l_entity);
+	l_res.entity := ssh.get_auth_entity(user_data);
+  l_res.entity := ssh.check_auth_force(l_entity);
   UPDATE users.users u
   	SET
     	email = COALESCE(l_email, u.email),
       last_visited = now(),
 			update_time = now()
     WHERE id = l_id
-    	RETURNING json_build_object(
+    	RETURNING jsonb_build_object(
       	'id', u.id,
         'password', l_new_password,
         'status', 200
-      ) INTO res;
+      ) INTO l_res.data;
 
-  IF res IS NULL THEN
+  IF l_res.data IS NULL THEN
     RAISE EXCEPTION
      USING 
 			ERRCODE = 'EJSON', 
-			DETAIL = json_build_object('code', 'USER_NOT_FOUND', 'status', 404)::text;    
+			DETAIL = jsonb_build_object('code', 'USER_NOT_FOUND', 'status', 404)::text;    
   END IF;
 
-	PERFORM ssh.update_key(l_entity);
+	l_res.entity := ssh.update_key(l_res.entity);
 	RETURN res;
 END;
 $$ LANGUAGE plpgsql;
 
 
 CREATE OR REPLACE FUNCTION users.set_user(user_data jsonb)
-RETURNS json AS $$
+RETURNS jsonb AS $$
 DECLARE 
-    res json;		
+    res ssh.EntityResult;
+		l_entity ssh.AuthEntity;
 		l_id uuid;
+		l_signer ssh.AuthEntity;
 		v_detail text;
 BEGIN
 		l_id := shared.set_null_if_empty(user_data->>'id')::uuid;
 		if (l_id is null) then
-			return users.add_user(user_data);
+			res := users.add_user(user_data);
+		else 
+			res :=  users.update_user(user_data);
 		end if;
-		return users.update_user(user_data);
+		l_signer := ssh.get_signer(user_data->'signer', res.entity);
+		l_entity := res.entity;
+		perform users.set_workspaces(l_entity.id, user_data->'workspaces', l_signer);
+		perform users.set_projects(l_entity.id, user_data->'projects', l_signer);
+		return res.data;
 		EXCEPTION
 			WHEN others THEN
 				GET STACKED DIAGNOSTICS
@@ -131,7 +152,7 @@ DECLARE
 BEGIN
 		l_id := shared.set_null_if_empty(user_data->>'id')::uuid;    
 		l_entity := ssh.get_auth_entity(user_data);
-    l_entity.id := ssh.check_auth_force(l_entity);
+    l_entity := ssh.check_auth_force(l_entity);
     DELETE FROM users.users u
     	WHERE id = l_entity.id
       RETURNING json_build_object(
@@ -151,5 +172,102 @@ END;
 $$ LANGUAGE plpgsql;
 
 
+create or replace function users.set_workspaces(
+    user_id uuid,
+    workspace_data jsonb,
+    entity ssh.AuthEntity
+)
+RETURNS void AS $$
+DECLARE
+    ws jsonb;
+BEGIN
+    IF jsonb_typeof(workspace_data) != 'array' THEN
+        RAISE EXCEPTION 
+            USING 
+                ERRCODE = 'EJSON',
+                DETAIL = jsonb_build_object('code', 'WORKSPACES_NOT_ARRAY', 'status', 400)::text;
+    END IF;
+
+    FOR ws IN
+        SELECT jsonb_array_elements(workspace_data)
+    LOOP
+        PERFORM users.set_workspace(user_id, ws, entity);
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+
+
+create or replace function users.set_workspace(a_user_id uuid, workspace_data jsonb, entity ssh.AuthEntity)
+RETURNS void AS $$
+DECLARE 		
+		l_id uuid;
+		l_role_code text;
+BEGIN
+		l_id := shared.set_null_if_empty(workspace_data->>'id')::uuid;
+    l_role_code := shared.set_null_if_empty(workspace_data->>'roleCode');
+		IF (l_role_code IS NULL) THEN
+			RAISE EXCEPTION 
+      	USING 
+					ERRCODE = 'EJSON', 
+					DETAIL = json_build_object('code', 'ROLE_CODE_IS_EMPTY', 'status', 400)::text;
+		END IF;
+		
+		PERFORM workspaces.check_access_force(entity, l_id);
+		insert into users.users_workspaces(user_id, workspace_id, role_code)
+		values (a_user_id, l_id, l_role_code::ltree)
+		on conflict (user_id, workspace_id) do update
+			set role_code = excluded.role_code;
+END;
+$$ LANGUAGE plpgsql;
+
+create or replace function users.set_projects(
+    user_id uuid,
+    project_data jsonb,
+    entity ssh.AuthEntity
+)
+RETURNS void AS $$
+DECLARE
+    ws jsonb;
+BEGIN
+    IF jsonb_typeof(project_data) != 'array' THEN
+        RAISE EXCEPTION 
+            USING 
+                ERRCODE = 'EJSON',
+                DETAIL = jsonb_build_object('code', 'PROJECT_NOT_ARRAY', 'status', 400)::text;
+    END IF;
+
+    FOR ws IN
+        SELECT jsonb_array_elements(project_data)
+    LOOP
+        PERFORM users.set_project(user_id, ws, entity);
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE FUNCTION users.set_project(user_id uuid, project_data jsonb, entity ssh.AuthEntity)
+RETURNS void AS $$
+DECLARE 		
+		l_id uuid;
+		l_role_code text;
+BEGIN
+		l_id := shared.set_null_if_empty(project_data->>'id')::uuid;
+    l_role_code := shared.set_null_if_empty(project_data->>'roleCode');
+		IF (l_role_code IS NULL) THEN
+			RAISE EXCEPTION 
+      	USING 
+					ERRCODE = 'EJSON', 
+					DETAIL = json_build_object('code', 'ROLE_CODE_IS_EMPTY', 'status', 400)::text;
+		END IF;
+		PERFORM projects.check_access_force(entity, l_id);
+		insert into users.users_projects(user_id, project_id, role_code)
+		values (user_id, l_id, l_role_code)
+		on conflict (user_id, project_id) do update
+			set role_code = excluded.role_code;
+END;
+$$ LANGUAGE plpgsql;
+
+
 select * from users.users;
 select * from workspaces.workspaces;
+select * from users.users_workspaces;

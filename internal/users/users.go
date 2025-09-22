@@ -2,28 +2,36 @@ package users
 
 import (
 	"novakey/internal/requestHandler"
+
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 )
 
 type AuthEntity struct {
-	Id 				string `json:"id,omitempty"`
-	PublicKey string `json:"publicKey"`
-	Signature string `json:"signature"`
-	Message   string `json:"message"`  
-	Timestamp int64  `json:"timestamp"`  
-	Password 	string `json:"password,omitempty"`
+	Id 				uuid.UUID `json:"id,omitempty"`
+	PublicKey string 		`json:"publicKey"`
+	Signature string 		`json:"signature"`
+	Message   string 		`json:"message"`  
+	Timestamp int64  		`json:"timestamp"`  
+	Password 	string 		`json:"password,omitempty"`
+}
+
+type Workspace struct {
+	Id 				uuid.UUID `json:"id"`
+	RoleCode  string 		`json:"roleCode"`
 }
 
 type SetUserRequest struct {	
 	AuthEntity
-	Email							string   `json:"email,omitempty"`
-	ProjectCodes   []string `json:"projectCodes,omitempty"`
+	Email						string   `json:"email,omitempty"`
+	Workspaces   		[]Workspace `json:"workspaces,omitempty"`
+	Signer					AuthEntity `json:"signer"`
 }
 
 type SetUserResponse struct {	
-	Id								string   `json:"id,omitempty"`	
-	Username					string   `json:"username,omitempty"`
-	Password					string   `json:"password,omitempty"`
+	Id								uuid.UUID   `json:"id,omitempty"`	
+	Username					string  		`json:"username,omitempty"`
+	Password					string   		`json:"password,omitempty"`
 	requesthandler.ErrorResponse
 }
 
@@ -32,7 +40,7 @@ type DeleteUserRequest struct {
 }
 
 type DeleteUserResponse struct {
-	Id								string   `json:"id,omitempty"`		
+	Id								uuid.UUID   `json:"id,omitempty"`		
   requesthandler.ErrorResponse
 }
 
