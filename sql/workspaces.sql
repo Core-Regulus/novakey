@@ -9,9 +9,9 @@ CREATE TABLE workspaces.workspaces (
 );
 
 CREATE OR REPLACE FUNCTION workspaces.set_workspace(workspace_data jsonb)
-RETURNS json AS $$
+RETURNS jsonb AS $$
 DECLARE 
-    res json;
+    res jsonb;
 		l_id uuid;
 		v_detail text;
 BEGIN
@@ -28,8 +28,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+
 CREATE OR REPLACE FUNCTION workspaces.add_workspace(workspace_data jsonb)
-RETURNS json AS $$
+RETURNS jsonb AS $$
 DECLARE 
     l_email text;
 		l_name text;
@@ -41,7 +42,7 @@ BEGIN
     	RAISE EXCEPTION 
       	USING 
 					ERRCODE = 'EJSON', 
-					DETAIL = json_build_object('code', 'NAME_IS_EMPTY', 'status', 400)::text;
+					DETAIL = jsonb_build_object('code', 'NAME_IS_EMPTY', 'status', 400)::text;
 		END IF;
 
 		l_entity := ssh.check_auth_force(workspace_data->'signer');
@@ -57,7 +58,7 @@ BEGIN
     RETURNING id
 		INTO l_id;
  		
-    RETURN json_build_object(
+    RETURN jsonb_build_object(
         'id', l_id,
 				'name', l_name,
 				'status',	200
@@ -66,9 +67,9 @@ BEGIN
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION workspaces.update_workspace(workspace_data jsonb)
-RETURNS json AS $$
+RETURNS jsonb AS $$
 DECLARE 
-    res json;
+    res jsonb;
     l_id uuid;
     l_name text;
 		l_entity ssh.AuthEntity;
@@ -86,7 +87,7 @@ BEGIN
 				owner = COALESCE(l_owner, u.owner),
 				update_time = now()
       WHERE id = l_id
-      	RETURNING json_build_object(
+      	RETURNING jsonb_build_object(
         	'id', u.id,
           'status', 200
        	) INTO res;
@@ -95,7 +96,7 @@ BEGIN
 		  	RAISE EXCEPTION 
     			USING 
 						ERRCODE = 'EJSON', 
-						DETAIL = json_build_object('code', 'WORKSPACE_NOT_FOUND', 'status', 404)::text;
+						DETAIL = jsonb_build_object('code', 'WORKSPACE_NOT_FOUND', 'status', 404)::text;
       END IF;
 
      RETURN res;
@@ -103,9 +104,9 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION workspaces.delete_workspace(workspace_data jsonb)
-RETURNS json AS $$
+RETURNS jsonb AS $$
 DECLARE 
-    res json;
+    res jsonb;
 		l_entity ssh.AuthEntity;
 		l_id uuid;
 		v_detail text;
@@ -116,7 +117,7 @@ BEGIN
 
   DELETE FROM workspaces.workspaces u
   	WHERE id = l_id
-    RETURNING json_build_object(
+    RETURNING jsonb_build_object(
       'id', u.id,
       'status', 200
     ) INTO res;
@@ -124,7 +125,7 @@ BEGIN
 			RAISE EXCEPTION 
     		USING 
 					ERRCODE = 'EJSON', 
-					DETAIL = json_build_object('code', 'WORKSPACE_NOT_FOUND', 'status', 404)::text;        
+					DETAIL = jsonb_build_object('code', 'WORKSPACE_NOT_FOUND', 'status', 404)::text;        
     END IF;
     RETURN res;
 
@@ -151,7 +152,7 @@ BEGIN
 		raise exception 
     	using
 				ERRCODE = 'EJSON', 
-				DETAIL = json_build_object('code', 'WORKSPACE_NO_ACCESS', 'status', 401)::text;
+				DETAIL = jsonb_build_object('code', 'WORKSPACE_NO_ACCESS', 'status', 401)::text;
 	end if;
 END;
 $$ LANGUAGE plpgsql;

@@ -23,7 +23,7 @@ create table users.users_workspaces (
 create index on users.users_workspaces using hash (user_id);
 create index on users.users_workspaces using hash (workspace_id);
 
-create table if not exists users.users_project (
+create table if not exists users.users_projects (
 	user_id 			uuid references users.users (id) on delete cascade,
 	project_id 		uuid references projects.projects (id) on delete cascade,	
 	role_code			ltree references roles.roles (code),
@@ -204,12 +204,19 @@ DECLARE
 		l_role_code text;
 BEGIN
 		l_id := shared.set_null_if_empty(workspace_data->>'id')::uuid;
+		IF (l_id IS NULL) THEN
+			RAISE EXCEPTION 
+      	USING 
+					ERRCODE = 'EJSON', 
+					DETAIL = jsonb_build_object('code', 'ID_IS_EMPTY', 'status', 400)::text;
+		END IF;
+
     l_role_code := shared.set_null_if_empty(workspace_data->>'roleCode');
 		IF (l_role_code IS NULL) THEN
 			RAISE EXCEPTION 
       	USING 
 					ERRCODE = 'EJSON', 
-					DETAIL = json_build_object('code', 'ROLE_CODE_IS_EMPTY', 'status', 400)::text;
+					DETAIL = jsonb_build_object('code', 'ROLE_CODE_IS_EMPTY', 'status', 400)::text;
 		END IF;
 		
 		PERFORM workspaces.check_access_force(entity, l_id);
@@ -244,24 +251,29 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-
-CREATE OR REPLACE FUNCTION users.set_project(user_id uuid, project_data jsonb, entity ssh.AuthEntity)
+CREATE OR REPLACE FUNCTION users.set_project(a_user_id uuid, project_data jsonb, entity ssh.AuthEntity)
 RETURNS void AS $$
 DECLARE 		
 		l_id uuid;
 		l_role_code text;
 BEGIN
 		l_id := shared.set_null_if_empty(project_data->>'id')::uuid;
+		IF (l_id IS NULL) THEN
+			RAISE EXCEPTION 
+      	USING 
+					ERRCODE = 'EJSON', 
+					DETAIL = jsonb_build_object('code', 'ID_IS_EMPTY', 'status', 400)::text;
+		END IF;
     l_role_code := shared.set_null_if_empty(project_data->>'roleCode');
 		IF (l_role_code IS NULL) THEN
 			RAISE EXCEPTION 
       	USING 
 					ERRCODE = 'EJSON', 
-					DETAIL = json_build_object('code', 'ROLE_CODE_IS_EMPTY', 'status', 400)::text;
+					DETAIL = jsonb_build_object('code', 'ROLE_CODE_IS_EMPTY', 'status', 400)::text;
 		END IF;
 		PERFORM projects.check_access_force(entity, l_id);
 		insert into users.users_projects(user_id, project_id, role_code)
-		values (user_id, l_id, l_role_code)
+		values (a_user_id, l_id, l_role_code::ltree)
 		on conflict (user_id, project_id) do update
 			set role_code = excluded.role_code;
 END;

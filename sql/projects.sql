@@ -17,7 +17,7 @@ create index on projects.projects using hash (workspace_id);
 create index on projects.projects using hash (owner_id);
 
 
-create table projects.keys (
+create table if not exists projects.keys (
 	project_id uuid references projects.projects (id) on delete cascade,
 	key text,	
 	value text,
@@ -39,17 +39,24 @@ create table projects.project_workspace (
 
 
 CREATE OR REPLACE FUNCTION projects.set_project(project_data jsonb)
-RETURNS json AS $$
+RETURNS jsonb AS $$
 DECLARE 
-    res json;
+    res jsonb;
 		l_id uuid;
+		l_signer ssh.AuthEntity;
 		v_detail text;
 BEGIN
 		l_id := shared.set_null_if_empty(project_data->>'id')::uuid;
+		l_signer := ssh.check_auth_force(project_data->'signer');
 		if (l_id is null) then
-			return projects.add_project(project_data);
+			res := projects.add_project(project_data);
+		else
+			res := projects.update_project(project_data);
 		end if;
-		return projects.update_project(project_data);
+		
+		perform projects.set_keys((res->>'id')::uuid, project_data->'keys', l_signer);
+		return res;
+			
 		EXCEPTION
 			WHEN others THEN
 				GET STACKED DIAGNOSTICS
@@ -59,7 +66,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION projects.add_project(project_data jsonb)
-RETURNS json AS $$
+RETURNS jsonb AS $$
 DECLARE 
     l_description text;
 		l_name text;
@@ -73,7 +80,7 @@ BEGIN
     	RAISE EXCEPTION 
       	USING 
 					ERRCODE = 'EJSON', 
-					DETAIL = json_build_object('code', 'NAME_IS_EMPTY', 'status', 400)::text;
+					DETAIL = jsonb_build_object('code', 'NAME_IS_EMPTY', 'status', 400)::text;
 		END IF;
 
    l_workspace_id := shared.set_null_if_empty(project_data->>'workspaceId');
@@ -81,14 +88,12 @@ BEGIN
     	RAISE EXCEPTION 
       	USING 
 					ERRCODE = 'EJSON', 
-					DETAIL = json_build_object('code', 'WORKSPACE_ID_IS_EMPTY', 'status', 400)::text;
+					DETAIL = jsonb_build_object('code', 'WORKSPACE_ID_IS_EMPTY', 'status', 400)::text;
 		END IF;
 
-    l_description := shared.set_null_if_empty(project_data->>'description');
-
-		l_entity := ssh.get_auth_entity(project_data->'user');
-		l_owner_id := ssh.check_auth_force(l_entity);
-
+    l_description := shared.set_null_if_empty(project_data->>'description');		
+		l_entity := ssh.check_auth_force(project_data->'signer');		
+		
     INSERT INTO projects.projects (
 				name,
 				workspace_id,
@@ -99,12 +104,12 @@ BEGIN
         l_name,
 				l_workspace_id,
 				l_description,
-				l_owner_id
+				l_entity.id
     )
     RETURNING id
 		INTO l_id;
 
-    RETURN json_build_object(
+    RETURN jsonb_build_object(
         'id', l_id,
 				'name', l_name,
         'description', l_description,
@@ -115,9 +120,9 @@ $$ LANGUAGE plpgsql;
 
 
 CREATE OR REPLACE FUNCTION projects.update_project(project_data jsonb)
-RETURNS json AS $$
+RETURNS jsonb AS $$
 DECLARE 
-    res json;
+    res jsonb;
     l_id uuid;
     l_name text;
 		l_entity ssh.AuthEntity;
@@ -137,7 +142,7 @@ BEGIN
 				owner = COALESCE(l_owner, p.owner),
 				update_time = now()
       WHERE id = l_id
-      	RETURNING json_build_object(
+      	RETURNING jsonb_build_object(
         	'id', p.id,
           'status', 200
        	) INTO res;
@@ -146,7 +151,7 @@ BEGIN
 		  	RAISE EXCEPTION 
     			USING 
 						ERRCODE = 'EJSON', 
-						DETAIL = json_build_object('code', 'PROJECT_NOT_FOUND', 'status', 404)::text;
+						DETAIL = jsonb_build_object('code', 'PROJECT_NOT_FOUND', 'status', 404)::text;
       END IF;
 
      RETURN res;
@@ -154,20 +159,20 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION projects.delete_project(project_data jsonb)
-RETURNS json AS $$
+RETURNS jsonb AS $$
 DECLARE 
-    res json;
+    res jsonb;
 		l_entity ssh.AuthEntity;
 		l_id uuid;
 		v_detail text;
 BEGIN
   l_id := shared.set_null_if_empty(project_data->>'id');
-	l_entity := ssh.get_auth_entity(project_data->'user');
+	l_entity := ssh.get_auth_entity(project_data->'signer');
 	PERFORM projects.check_access_force(l_entity, l_id);
 
   DELETE FROM projects.projects p
   	WHERE id = l_id
-    RETURNING json_build_object(
+    RETURNING jsonb_build_object(
       'id', p.id,
       'status', 200
     ) INTO res;
@@ -175,7 +180,7 @@ BEGIN
 			RAISE EXCEPTION 
     		USING 
 					ERRCODE = 'EJSON', 
-					DETAIL = json_build_object('code', 'PROJECT_NOT_FOUND', 'status', 404)::text;        
+					DETAIL = jsonb_build_object('code', 'PROJECT_NOT_FOUND', 'status', 404)::text;        
     END IF;
     RETURN res;
 
@@ -191,13 +196,12 @@ CREATE OR REPLACE FUNCTION projects.check_access_force(entity ssh.AuthEntity, pr
 RETURNS void AS $$
 DECLARE
 	l_res uuid;
-	l_owner uuid;
+	l_entity ssh.AuthEntity;
 	l_project_id uuid;	
 BEGIN
-	l_owner := ssh.check_auth_force(entity);
-	select p.id from projects.projects p
-	inner join workspaces.workspaces w on (p.workspace_id = w.id)
-	where p.id = project_id and (p.owner_id = l_owner or w.owner = l_owner)
+	l_entity := ssh.check_auth_force(entity);	
+	select p.id from projects.projects p	
+	where p.id = project_id and (p.owner_id = l_entity.id)
 	into l_project_id;	
 	if (l_project_id is null) then
 		raise exception 
@@ -208,6 +212,60 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-select * from users.users;
+create or replace function projects.set_keys(
+    project_id uuid,
+    key_data jsonb,
+    entity ssh.AuthEntity
+)
+RETURNS void AS $$
+DECLARE
+    ws jsonb;
+BEGIN
+    IF jsonb_typeof(key_data) != 'array' THEN
+        RAISE EXCEPTION 
+            USING 
+                ERRCODE = 'EJSON',
+                DETAIL = jsonb_build_object('code', 'KEYS_NOT_ARRAY', 'status', 400)::text;
+    END IF;
+
+    FOR ws IN
+        SELECT jsonb_array_elements(key_data)
+    LOOP
+        PERFORM projects.set_key(project_id, ws, entity);
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+
+
+create or replace function projects.set_key(a_project_id uuid, key_data jsonb, entity ssh.AuthEntity)
+RETURNS void AS $$
+DECLARE 		
+		l_key text;
+		l_value text;
+BEGIN
+		l_key := shared.set_null_if_empty(key_data->>'key');
+		IF (l_key IS NULL) THEN
+			RAISE EXCEPTION 
+      	USING 
+					ERRCODE = 'EJSON', 
+					DETAIL = jsonb_build_object('code', 'KEY_IS_EMPTY', 'status', 400)::text;
+		END IF;
+
+    l_value := shared.set_null_if_empty(key_data->>'value');
+		IF (l_value IS NULL) THEN
+			RAISE EXCEPTION 
+      	USING 
+					ERRCODE = 'EJSON', 
+					DETAIL = jsonb_build_object('code', 'VALUE_IS_EMPTY', 'status', 400)::text;
+		END IF;
+		
+		PERFORM projects.check_access_force(entity, a_project_id);
+		insert into projects.keys(project_id, key, value)
+		values (a_project_id, l_key, l_value)
+		on conflict (project_id, key) do update
+			set value = excluded.value,
+					update_time = now();
+END;
+$$ LANGUAGE plpgsql;
 
 
