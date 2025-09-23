@@ -6,21 +6,9 @@ import (
 	"novakey/internal/db"
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
+	"github.com/core-regulus/novakey-types-go"
 )
 
-type ValidationErrorResponse struct {
-	Error       bool
-	FailedField string
-	Value       any
-	Tag         string
-}
-
-type ErrorResponse struct {
-	Error            string `json:"error,omitempty"`
-	Code             string `json:"code,omitempty"`
-	Status           int    `json:"status,omitempty"`
-	ErrorDescription string `json:"errorDescription,omitempty"`
-}
 
 func validateStruct[T any](key T) error {
 	validate := validator.New()
@@ -41,9 +29,9 @@ func GenericRequestHandler[Request any, Response any](
 	}
 
 	if errs := validateStruct(in); errs != nil {
-		validationErrors := []ValidationErrorResponse{}
+		validationErrors := []novakeytypes.ValidationErrorResponse{}
 		for _, err := range errs.(validator.ValidationErrors) {
-			validationErrors = append(validationErrors, ValidationErrorResponse{
+			validationErrors = append(validationErrors, novakeytypes.ValidationErrorResponse{
 				FailedField: err.Field(),
 				Value:       err.Value(),
 				Error:       true,
