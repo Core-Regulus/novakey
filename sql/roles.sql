@@ -65,16 +65,3 @@ on conflict (role_code, selector_code) do update
 	set selector_code = excluded.selector_code;
 
 
-select * from users.users_projects up;
-
-
-
-
-	select p.selector_code from users.users_projects w
-	inner join roles.profiles p on (p.role_code = w.role_code)
-	where (w.user_id = 'b2cea625-0db4-4a44-bdb5-be26f82211b9' and 
-				w.project_id = '3e450a66-a37d-48bc-82ca-99d62bf62700' and 
-				p.selector_code = any(array['root.workspace.project.read']::ltree[]));
-
-
-
