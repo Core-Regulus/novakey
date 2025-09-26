@@ -22,7 +22,7 @@ require (
 
 require (
 	github.com/andybalholm/brotli v1.1.0 // indirect
-	github.com/core-regulus/novakey-types-go v0.0.6
+	github.com/core-regulus/novakey-types-go v0.0.7
 	github.com/go-playground/validator/v10 v10.27.0
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgx/v5 v5.7.5

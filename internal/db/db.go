@@ -32,8 +32,6 @@ func checkSSH() {
 	})	
 }
 
-
-
 func connectSSH(cfg *config.Config) {
 	signer, err := ssh.ParsePrivateKey([]byte(cfg.SSH.PrivateKey))
 	if err != nil {

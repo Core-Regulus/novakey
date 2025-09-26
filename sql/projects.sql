@@ -7,15 +7,15 @@ create table projects.projects(
 	name text not null,
 	description text,
 	workspace_id uuid not null references workspaces.workspaces on delete cascade,
-	owner_id uuid not null references users.users on delete cascade,
+	owner uuid not null references users.users on delete cascade,
 	create_time timestamp with time zone not null default now(),
 	update_time timestamp with time zone not null default now(),
 	unique (workspace_id, name)
 );
 
-create index on projects.projects using hash (workspace_id);
-create index on projects.projects using hash (owner_id);
 
+create index on projects.projects using hash (workspace_id);
+create index on projects.projects using hash (owner);
 
 create table if not exists projects.keys (
 	project_id uuid references projects.projects (id) on delete cascade,
@@ -23,14 +23,13 @@ create table if not exists projects.keys (
 	value text,
 	create_time timestamp with time zone not null default now(),
 	update_time timestamp with time zone not null default now(),
-	primary key (project_id, key),
-	unique(key, value)
+	primary key (project_id, key, value)
 );
 
 create index on projects.keys using hash (project_id);
 
  
-create table projects.project_workspace (
+create table if not exists projects.project_workspace (
 	project_id uuid references projects.projects (id) on delete cascade,
 	workspace_id uuid references workspaces.workspaces (id) on delete cascade,
 	create_time timestamp with time zone not null default now(),
@@ -98,7 +97,7 @@ BEGIN
 				name,
 				workspace_id,
 				description,
-				owner_id
+				owner
     )
     VALUES (
         l_name,
@@ -133,7 +132,7 @@ BEGIN
 
 		l_entity := ssh.get_auth_entity(project_data->'user');
 		l_owner := shared.set_null_if_empty(project_data->>'newOwner');
-		PERFORM projects.check_access_force(l_entity, l_id);
+		PERFORM projects.check_access_force(l_entity, l_id, ARRAY['root.workspace.project.write']::tree[]);
 
     UPDATE projects.projects p
     	SET
@@ -168,7 +167,7 @@ DECLARE
 BEGIN
   l_id := shared.set_null_if_empty(project_data->>'id');
 	l_entity := ssh.get_auth_entity(project_data->'signer');
-	PERFORM projects.check_access_force(l_entity, l_id);
+	PERFORM projects.check_access_force(l_entity, l_id, ARRAY['root.workspace.project.admin']::ltree[]);
 
   DELETE FROM projects.projects p
   	WHERE id = l_id
@@ -192,23 +191,36 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION projects.check_access_force(entity ssh.AuthEntity, project_id uuid)
+
+CREATE OR REPLACE FUNCTION projects.check_access_force(entity ssh.AuthEntity, project_id uuid, a_selectors ltree[])
 RETURNS void AS $$
 DECLARE
 	l_res uuid;
 	l_entity ssh.AuthEntity;
 	l_project_id uuid;	
+	l_workspace_id uuid;
+	l_project_owner uuid;
+	l_workspace_owner uuid;
+	l_selector ltree;
 BEGIN
 	l_entity := ssh.check_auth_force(entity);	
-	select p.id from projects.projects p	
-	where p.id = project_id and (p.owner_id = l_entity.id)
-	into l_project_id;	
+	select p.id, p.workspace_id, p.owner, w.owner from projects.projects p
+	inner join workspaces.workspaces w on (w.id = p.workspace_id)
+	where p.id = project_id
+	into l_project_id, l_workspace_id, l_project_owner, l_workspace_owner;	
 	if (l_project_id is null) then
 		raise exception 
     	using
 				ERRCODE = 'EJSON', 
 				DETAIL = json_build_object('code', 'PROJECT_NO_ACCESS', 'status', 401)::text;
 	end if;
+
+	if (l_entity.id = l_project_owner) or (l_entity.id = l_workspace_owner) then
+		return;
+	end if;
+
+	perform users.check_workspace_selectors_force(l_entity.id, l_workspace_id, ARRAY['root.workspace.write.admin']::ltree[]);
+	perform users.check_project_selectors_force(l_entity.id, project_id, a_selectors);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -259,12 +271,55 @@ BEGIN
 					DETAIL = jsonb_build_object('code', 'VALUE_IS_EMPTY', 'status', 400)::text;
 		END IF;
 		
-		PERFORM projects.check_access_force(entity, a_project_id);
+		PERFORM projects.check_access_force(entity, a_project_id, ARRAY['root.workspace.project.write']::ltree[]);
 		insert into projects.keys(project_id, key, value)
 		values (a_project_id, l_key, l_value)
-		on conflict (project_id, key) do update
+		on conflict (project_id, key, value) do update
 			set value = excluded.value,
 					update_time = now();
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION projects.get_project(project_data jsonb)
+RETURNS jsonb AS $$
+DECLARE 
+    res jsonb;
+		l_id uuid;
+		l_signer ssh.AuthEntity;
+		v_detail text;
+BEGIN
+		l_id := shared.set_null_if_empty(project_data->>'id')::uuid;
+		IF (l_id IS NULL) THEN
+			RAISE EXCEPTION 
+      	USING 
+					ERRCODE = 'EJSON', 
+					DETAIL = jsonb_build_object('code', 'ID_IS_EMPTY', 'status', 400)::text;
+		END IF;
+		l_signer := ssh.get_auth_entity(project_data->'signer');
+		perform projects.check_access_force(l_signer, l_id, ARRAY['root.workspace.project.read']::ltree[]);
+		select jsonb_build_object(
+							'id', p.id,
+							'keys', k.keys,
+				      'status', 200
+					 ) from projects.projects p
+		inner join (
+			select project_id, jsonb_agg(jsonb_build_object(
+				'key', key,
+				'value', value
+			)) as keys
+			from projects.keys 			
+			where project_id = l_id
+			group by project_id
+		) k on true
+		into res;
+
+		return res;
+			
+		EXCEPTION
+			WHEN others THEN
+				GET STACKED DIAGNOSTICS
+  	      v_detail = PG_EXCEPTION_DETAIL;
+				RETURN shared.handle_exception('Can`t set project', SQLSTATE, v_detail, SQLERRM);
 END;
 $$ LANGUAGE plpgsql;
 

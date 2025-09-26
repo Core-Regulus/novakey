@@ -271,7 +271,7 @@ BEGIN
 					ERRCODE = 'EJSON', 
 					DETAIL = jsonb_build_object('code', 'ROLE_CODE_IS_EMPTY', 'status', 400)::text;
 		END IF;
-		PERFORM projects.check_access_force(entity, l_id);
+		PERFORM projects.check_access_force(entity, l_id, ARRAY['root.workspace.project.admin']::ltree[]);
 		insert into users.users_projects(user_id, project_id, role_code)
 		values (a_user_id, l_id, l_role_code::ltree)
 		on conflict (user_id, project_id) do update
@@ -279,7 +279,62 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION users.check_workspace_selectors(a_user_id uuid, a_workspace_id uuid, selectors ltree[])
+RETURNS ltree AS $$
+declare
+	l_res ltree;
+BEGIN
+	select p.selector_code from users.users_workspaces w
+	inner join roles.profiles p on (p.role_code = w.role_code)
+	where (w.user_id = a_user_id and w.workspace_id = a_workspace_id and p.selector_code = any(selectors))
+	into l_res
+	limit 1;
+	return l_res;
+END;
+$$ LANGUAGE plpgsql;
 
-select * from users.users;
-select * from workspaces.workspaces;
-select * from users.users_workspaces;
+CREATE OR REPLACE FUNCTION users.check_workspace_selectors_force(a_user_id uuid, a_workspace_id uuid, a_selectors ltree[])
+RETURNS ltree AS $$
+declare
+	l_selector ltree;
+BEGIN
+	l_selector := users.check_workspace_selectors(a_user_id, a_workspace_id, a_selectors);
+	if (l_selector is null) then
+		raise exception 
+	  	using
+				ERRCODE = 'EJSON', 
+				DETAIL = json_build_object('code', 'WORKSPACE_NO_ACCESS', 'status', 401)::text;
+	end if;
+	return l_selector;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION users.check_project_selectors(a_user_id uuid, a_project_id uuid, selectors ltree[])
+RETURNS ltree AS $$
+declare
+	l_res ltree;
+BEGIN
+	select p.selector_code from users.users_projects w
+	inner join roles.profiles p on (p.role_code = w.role_code)
+	where (w.user_id = a_user_id and w.project_id = a_project_id and p.selector_code = any(selectors))
+	into l_res
+	limit 1;
+	return l_res;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION users.check_project_selectors_force(a_user_id uuid, a_project_id uuid, a_selectors ltree[])
+RETURNS ltree AS $$
+declare
+	l_selector ltree;
+BEGIN
+	l_selector := users.check_project_selectors(a_user_id, a_project_id, a_selectors);
+	if (l_selector is null) then
+		raise exception 
+	  	using
+				ERRCODE = 'EJSON', 
+				DETAIL = json_build_object('code', 'PROJECT_NO_ACCESS', 'status', 401)::text;
+	end if;
+	return l_selector;
+END;
+$$ LANGUAGE plpgsql;
