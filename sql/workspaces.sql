@@ -59,8 +59,9 @@ BEGIN
 		INTO l_id;
  		
     RETURN jsonb_build_object(
-        'id', l_id,
-				'name', l_name,
+        'id', id,
+				'name', owner,
+				'roleCodes', users.get_user_workspaces_roles(l_id, owner)
 				'status',	200
     );
 	END;
@@ -89,6 +90,8 @@ BEGIN
       WHERE id = l_id
       	RETURNING jsonb_build_object(
         	'id', u.id,
+					'name', u.name,
+					'roleCodes', users.get_user_workspaces_roles(l_id, u.owner)
           'status', 200
        	) INTO res;
 
@@ -156,4 +159,3 @@ BEGIN
 	end if;
 END;
 $$ LANGUAGE plpgsql;
-

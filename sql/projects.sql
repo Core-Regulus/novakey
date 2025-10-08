@@ -109,9 +109,10 @@ BEGIN
 		INTO l_id;
 
     RETURN jsonb_build_object(
-        'id', l_id,
-				'name', l_name,
-        'description', l_description,
+        'id', id,
+				'name', name,
+        'description', description,
+				'roleCodes', users.get_user_project_roles(id, owner)
 				'status',	200
     );
 	END;
@@ -143,6 +144,9 @@ BEGIN
       WHERE id = l_id
       	RETURNING jsonb_build_object(
         	'id', p.id,
+					'name', name,
+  	      'description', description,
+					'roleCodes', users.get_user_project_roles(id, owner)
           'status', 200
        	) INTO res;
 

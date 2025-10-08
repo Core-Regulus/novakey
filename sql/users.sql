@@ -343,3 +343,68 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION users.get_user_workspace_roles(
+    workspace_id uuid,
+    user_id uuid
+)
+RETURNS text[] AS $$
+DECLARE
+    l_role_codes text[] := '{}'; 
+    l_owner uuid;
+    l_user_roles text[];
+BEGIN
+    SELECT w.owner
+    INTO l_owner
+    FROM workspaces.workspaces w
+    WHERE w.id = workspace_id AND w.owner = user_id;
+
+    IF l_owner IS NOT NULL THEN
+        l_role_codes := l_role_codes || 'owner';
+    END IF;
+
+    SELECT array_agg(role_code)
+    INTO l_user_roles
+    FROM users.users_workspaces uw
+    WHERE uw.user_id = user_id AND uw.workspace_id = workspace_id;
+
+    IF l_user_roles IS NOT NULL THEN
+        l_role_codes := l_role_codes || l_user_roles;
+    END IF;
+
+    RETURN l_role_codes;
+END;
+$$ LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE FUNCTION users.get_user_project_roles(
+    project_id uuid,
+    user_id uuid
+)
+RETURNS text[] AS $$
+DECLARE
+    l_role_codes text[] := '{}'; 
+    l_owner uuid;
+    l_user_roles text[];
+BEGIN
+    SELECT p.owner
+    INTO l_owner
+    FROM projects.projects p
+    INNER JOIN workspaces.workspaces w ON w.id = p.workspace_id
+    WHERE p.id = project_id AND (p.owner = user_id OR w.owner = user_id);
+
+    IF l_owner IS NOT NULL THEN
+        l_role_codes := l_role_codes || 'owner';
+    END IF;
+
+    SELECT array_agg(DISTINCT role_code)
+    INTO l_user_roles
+    FROM users.users_projects up
+    WHERE up.user_id = user_id AND up.project_id = project_id;
+
+    IF l_user_roles IS NOT NULL THEN
+        l_role_codes := l_role_codes || l_user_roles;
+    END IF;
+
+    RETURN l_role_codes;
+END;
+$$ LANGUAGE plpgsql;
