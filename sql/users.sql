@@ -71,6 +71,7 @@ BEGIN
 		l_res.data := jsonb_build_object(
         'id', l_id,
 				'username', l_username,
+				'publicKey', user_data->>'publicKey',
         'password', l_entity.password,
 				'status',	200
     );
@@ -84,11 +85,13 @@ DECLARE
     l_id uuid;
     l_email text;
 		l_res ssh.EntityResult;
+		l_entity ssh.AuthEntity;
 BEGIN
 	l_id := shared.set_null_if_empty(user_data->>'id')::uuid;
   l_email := shared.set_null_if_empty(user_data->>'email');        
 	l_res.entity := ssh.get_auth_entity(user_data);
   l_res.entity := ssh.check_auth_force(l_entity);
+	l_entity := l_res.entity;
   UPDATE users.users u
   	SET
     	email = COALESCE(l_email, u.email),
@@ -97,6 +100,7 @@ BEGIN
     WHERE id = l_id
     	RETURNING jsonb_build_object(
       	'id', u.id,
+				'publicKey', user_data->>'publicKey',
         'password', l_new_password,
         'status', 200
       ) INTO l_res.data;
@@ -338,3 +342,4 @@ BEGIN
 	return l_selector;
 END;
 $$ LANGUAGE plpgsql;
+

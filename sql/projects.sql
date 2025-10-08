@@ -219,7 +219,11 @@ BEGIN
 		return;
 	end if;
 
-	perform users.check_workspace_selectors_force(l_entity.id, l_workspace_id, ARRAY['root.workspace.write.admin']::ltree[]);
+	l_selector := users.check_workspace_selectors(l_entity.id, l_workspace_id, ARRAY['root.workspace.write.admin']::ltree[]);
+	if (l_selector is not null) then
+		return;
+	end if;
+
 	perform users.check_project_selectors_force(l_entity.id, project_id, a_selectors);
 END;
 $$ LANGUAGE plpgsql;
