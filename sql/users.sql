@@ -259,7 +259,7 @@ CREATE OR REPLACE FUNCTION users.set_project(a_user_id uuid, project_data jsonb,
 RETURNS void AS $$
 DECLARE 		
 		l_id uuid;
-		l_role_code text;
+		l_role_codes text[];
 BEGIN
 		l_id := shared.set_null_if_empty(project_data->>'id')::uuid;
 		IF (l_id IS NULL) THEN
@@ -268,18 +268,23 @@ BEGIN
 					ERRCODE = 'EJSON', 
 					DETAIL = jsonb_build_object('code', 'ID_IS_EMPTY', 'status', 400)::text;
 		END IF;
-    l_role_code := shared.set_null_if_empty(project_data->>'roleCode');
-		IF (l_role_code IS NULL) THEN
+    l_role_codes := shared.set_null_if_empty(project_data->>'roleCodes');
+		IF (l_role_codes IS NULL) THEN
 			RAISE EXCEPTION 
       	USING 
 					ERRCODE = 'EJSON', 
-					DETAIL = jsonb_build_object('code', 'ROLE_CODE_IS_EMPTY', 'status', 400)::text;
+					DETAIL = jsonb_build_object('code', 'ROLE_CODES_IS_EMPTY', 'status', 400)::text;
 		END IF;
 		PERFORM projects.check_access_force(entity, l_id, ARRAY['root.workspace.project.admin']::ltree[]);
-		insert into users.users_projects(user_id, project_id, role_code)
-		values (a_user_id, l_id, l_role_code::ltree)
-		on conflict (user_id, project_id) do update
-			set role_code = excluded.role_code;
+			
+	insert into users.users_projects(user_id, project_id, role_code)
+	select 
+	    a_user_id,
+	    l_id,
+	    role_code::ltree
+	from unnest(l_role_codes) AS role_code
+	on conflict (user_id, project_id, role_code) do update
+	set role_code = EXCLUDED.role_code;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -343,9 +348,10 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+
 CREATE OR REPLACE FUNCTION users.get_user_workspace_roles(
-    workspace_id uuid,
-    user_id uuid
+    a_workspace_id uuid,
+    a_user_id uuid
 )
 RETURNS text[] AS $$
 DECLARE
@@ -356,16 +362,16 @@ BEGIN
     SELECT w.owner
     INTO l_owner
     FROM workspaces.workspaces w
-    WHERE w.id = workspace_id AND w.owner = user_id;
+    WHERE w.id = a_workspace_id AND w.owner = a_user_id;
 
     IF l_owner IS NOT NULL THEN
-        l_role_codes := l_role_codes || 'owner';
+        l_role_codes := l_role_codes || ARRAY['owner'];
     END IF;
 
     SELECT array_agg(role_code)
     INTO l_user_roles
     FROM users.users_workspaces uw
-    WHERE uw.user_id = user_id AND uw.workspace_id = workspace_id;
+    WHERE uw.user_id = a_user_id AND uw.workspace_id = a_workspace_id;
 
     IF l_user_roles IS NOT NULL THEN
         l_role_codes := l_role_codes || l_user_roles;
@@ -377,8 +383,8 @@ $$ LANGUAGE plpgsql;
 
 
 CREATE OR REPLACE FUNCTION users.get_user_project_roles(
-    project_id uuid,
-    user_id uuid
+    a_project_id uuid,
+    a_user_id uuid
 )
 RETURNS text[] AS $$
 DECLARE
@@ -390,16 +396,16 @@ BEGIN
     INTO l_owner
     FROM projects.projects p
     INNER JOIN workspaces.workspaces w ON w.id = p.workspace_id
-    WHERE p.id = project_id AND (p.owner = user_id OR w.owner = user_id);
+    WHERE p.id = a_project_id AND (p.owner = a_user_id OR w.owner = a_user_id);
 
     IF l_owner IS NOT NULL THEN
-        l_role_codes := l_role_codes || 'owner';
+        l_role_codes := l_role_codes || ARRAY['owner'];
     END IF;
 
     SELECT array_agg(DISTINCT role_code)
     INTO l_user_roles
     FROM users.users_projects up
-    WHERE up.user_id = user_id AND up.project_id = project_id;
+    WHERE up.user_id = a_user_id AND up.project_id = a_project_id;
 
     IF l_user_roles IS NOT NULL THEN
         l_role_codes := l_role_codes || l_user_roles;

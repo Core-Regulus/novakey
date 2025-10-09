@@ -59,9 +59,9 @@ BEGIN
 		INTO l_id;
  		
     RETURN jsonb_build_object(
-        'id', id,
-				'name', owner,
-				'roleCodes', users.get_user_workspaces_roles(l_id, owner)
+        'id', l_id,
+				'name', l_name,
+				'roleCodes', users.get_user_workspace_roles(l_id, l_entity.id),
 				'status',	200
     );
 	END;
@@ -91,7 +91,7 @@ BEGIN
       	RETURNING jsonb_build_object(
         	'id', u.id,
 					'name', u.name,
-					'roleCodes', users.get_user_workspaces_roles(l_id, u.owner)
+					'roleCodes', users.get_user_workspace_roles(l_id, u.owner),
           'status', 200
        	) INTO res;
 
