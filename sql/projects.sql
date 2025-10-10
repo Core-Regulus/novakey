@@ -112,7 +112,7 @@ BEGIN
         'id', l_id,
 				'name', l_name,
         'description', l_description,
-				'roleCodes', users.get_user_project_roles(l_id, l_entity.id),
+				'roleCode', users.get_user_project_role(l_id, l_entity.id),
 				'status',	200
     );
 	END;

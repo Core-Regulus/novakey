@@ -45,6 +45,7 @@ func GenericRequestHandler[Request any, Response any](
 	ctx := context.Background()
 
 	inJSON, err := json.Marshal(in)
+	
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "cannot marshal request",
