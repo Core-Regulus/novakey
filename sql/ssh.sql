@@ -11,6 +11,11 @@ CREATE TABLE ssh.keys (
 
 create index on ssh.keys using hash (public_key);
 
+ALTER TABLE ssh.keys
+ADD CONSTRAINT fk_ssh_keys_user
+FOREIGN KEY (id) REFERENCES users.users(id)
+ON DELETE CASCADE;
+
 CREATE TYPE ssh.AuthEntity AS (
     id   uuid,
     public_key  bytea,
@@ -242,7 +247,10 @@ BEGIN
 			entity.id,
 			entity.public_key,
 			l_password			
-    );
+    )
+		ON CONFLICT (public_key) DO UPDATE SET
+			password = l_password,
+			update_time = now();
 
 		RETURN entity;
 END;    
@@ -267,8 +275,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+
 CREATE OR REPLACE FUNCTION ssh.delete_key(entity ssh.AuthEntity)
-RETURNS ssh.AuthEntity AS $$
+RETURNS bool AS $$
 DECLARE
 	l_res uuid;
 BEGIN
@@ -277,14 +286,10 @@ BEGIN
 	RETURNING id
 	INTO l_res;
 
-  IF l_res IS NULL THEN
-		RAISE EXCEPTION 
-			USING
-				ERRCODE = 'EJSON', 
-				DETAIL = json_build_object('code', 'KEY_NOT_FOUND', 'status', 404)::text;    
-  END IF;
-  RETURN entity;
+	return (l_res is NOT NULL);
+
 END;
 $$ LANGUAGE plpgsql;
+
 
 

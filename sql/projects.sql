@@ -47,6 +47,7 @@ DECLARE
 BEGIN
 		l_id := shared.set_null_if_empty(project_data->>'id')::uuid;
 		l_signer := ssh.check_auth_force(project_data->'signer');
+		
 		if (l_id is null) then
 			res := projects.add_project(project_data);
 		else
@@ -127,13 +128,16 @@ DECLARE
     l_name text;
 		l_entity ssh.AuthEntity;
 		l_owner uuid;
+		l_description text;
 BEGIN
     l_id := shared.set_null_if_empty(project_data->>'id');
     l_name := shared.set_null_if_empty(project_data->>'name');
-
-		l_entity := ssh.get_auth_entity(project_data->'user');
+		
+		l_entity := ssh.check_auth_force(project_data->'signer');
+		l_description := shared.set_null_if_empty(project_data->>'description');	
 		l_owner := shared.set_null_if_empty(project_data->>'newOwner');
-		PERFORM projects.check_access_force(l_entity, l_id, ARRAY['root.workspace.project.write']::tree[]);
+		 
+		PERFORM projects.check_access_force(l_entity, l_id, ARRAY['root.workspace.project.write']::ltree[]);
 
     UPDATE projects.projects p
     	SET
@@ -146,7 +150,7 @@ BEGIN
         	'id', p.id,
 					'name', p.name,
   	      'description', p.description,
-					'roleCodes', users.get_user_project_roles(p.id, p.owner),
+					'roleCodes', users.get_user_project_role(p.id, p.owner),
           'status', 200
        	) INTO res;
 
@@ -170,7 +174,7 @@ DECLARE
 		v_detail text;
 BEGIN
   l_id := shared.set_null_if_empty(project_data->>'id');
-	l_entity := ssh.get_auth_entity(project_data->'signer');
+	l_entity := ssh.check_auth_force(project_data->'signer');
 	PERFORM projects.check_access_force(l_entity, l_id, ARRAY['root.workspace.project.admin']::ltree[]);
 
   DELETE FROM projects.projects p
@@ -199,36 +203,36 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION projects.check_access_force(entity ssh.AuthEntity, project_id uuid, a_selectors ltree[])
 RETURNS void AS $$
 DECLARE
-	l_res uuid;
-	l_entity ssh.AuthEntity;
+	l_res uuid;	
 	l_project_id uuid;	
 	l_workspace_id uuid;
 	l_project_owner uuid;
 	l_workspace_owner uuid;
 	l_selector ltree;
 BEGIN
-	l_entity := ssh.check_auth_force(entity);	
+		
 	select p.id, p.workspace_id, p.owner, w.owner from projects.projects p
 	inner join workspaces.workspaces w on (w.id = p.workspace_id)
 	where p.id = project_id
 	into l_project_id, l_workspace_id, l_project_owner, l_workspace_owner;	
+	
 	if (l_project_id is null) then
 		raise exception 
     	using
 				ERRCODE = 'EJSON', 
 				DETAIL = json_build_object('code', 'PROJECT_NO_ACCESS', 'status', 401)::text;
 	end if;
-
-	if (l_entity.id = l_project_owner) or (l_entity.id = l_workspace_owner) then
+	
+	if (entity.id = l_project_owner) or (entity.id = l_workspace_owner) then
 		return;
 	end if;
-
-	l_selector := users.check_workspace_selectors(l_entity.id, l_workspace_id, ARRAY['root.workspace.write.admin']::ltree[]);
+	
+	l_selector := users.check_workspace_selectors(entity.id, l_workspace_id, ARRAY['root.workspace.write.admin']::ltree[]);
 	if (l_selector is not null) then
 		return;
 	end if;
 
-	perform users.check_project_selectors_force(l_entity.id, project_id, a_selectors);
+	perform users.check_project_selectors_force(entity.id, project_id, a_selectors);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -303,8 +307,10 @@ BEGIN
 					ERRCODE = 'EJSON', 
 					DETAIL = jsonb_build_object('code', 'ID_IS_EMPTY', 'status', 400)::text;
 		END IF;
-		l_signer := ssh.get_auth_entity(project_data->'signer');
+		
+		l_signer := ssh.check_auth_force(project_data->'signer');
 		perform projects.check_access_force(l_signer, l_id, ARRAY['root.workspace.project.read']::ltree[]);
+		
 		select jsonb_build_object(
 							'id', p.id,
 							'keys', k.keys,

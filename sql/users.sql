@@ -11,6 +11,8 @@ CREATE TABLE users.users (
 	username text not null
 );
 
+create unique index on users.users (email);
+
 
 create table users.users_workspaces (
 	user_id 			uuid references users.users (id) on delete cascade,
@@ -61,8 +63,11 @@ BEGIN
         l_email,
 				l_username
     )
-    RETURNING id
-		INTO l_id;
+
+		INTO l_id
+		ON CONFLICT (email) do update set
+			username = coalesce(excluded.username, users.users.username)
+    RETURNING id;
 
 		l_res.entity := ssh.get_auth_entity(user_data);
 		l_res.entity.id := l_id;
@@ -131,7 +136,7 @@ BEGIN
 		if (l_id is null) then
 			res := users.add_user(user_data);
 		else 
-			res :=  users.update_user(user_data);
+			res := users.update_user(user_data);
 		end if;
 		l_signer := ssh.get_signer(user_data->'signer', res.entity);
 		l_entity := res.entity;
@@ -142,7 +147,7 @@ BEGIN
 			WHEN others THEN
 				GET STACKED DIAGNOSTICS
   	      v_detail = PG_EXCEPTION_DETAIL;
-				RETURN shared.handle_exception('Can`t set users', SQLSTATE, v_detail, SQLERRM);
+				RETURN shared.handle_exception('Can`t set user', SQLSTATE, v_detail, SQLERRM);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -151,18 +156,16 @@ RETURNS json AS $$
 DECLARE 
     res json;
 		l_key bytea;
-		l_id uuid;
 		l_entity ssh.AuthEntity;
+		v_detail text;
 BEGIN
-		l_id := shared.set_null_if_empty(user_data->>'id')::uuid;    
-		l_entity := ssh.get_auth_entity(user_data);
-    l_entity := ssh.check_auth_force(l_entity);
+    l_entity := ssh.check_auth_force(user_data);
     DELETE FROM users.users u
-    	WHERE id = l_entity.id
-      RETURNING json_build_object(
-      	'id', u.id,
-        'status', 200
-      ) INTO res;
+    WHERE id = l_entity.id
+    RETURNING json_build_object(
+     	'id', u.id,
+       'status', 200
+    ) INTO res;
 
     IF res IS NULL THEN
     	RAISE EXCEPTION
@@ -170,8 +173,15 @@ BEGIN
 					ERRCODE = 'EJSON', 
 					DETAIL = json_build_object('code', 'USER_NOT_FOUND', 'status', 404)::text;        
     END IF;
+
 		PERFORM ssh.delete_key(l_entity);	
     RETURN res;
+
+		EXCEPTION
+			WHEN others THEN
+				GET STACKED DIAGNOSTICS
+  	      v_detail = PG_EXCEPTION_DETAIL;
+				RETURN shared.handle_exception('Can`t delete user', SQLSTATE, v_detail, SQLERRM);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -223,11 +233,13 @@ BEGIN
 					DETAIL = jsonb_build_object('code', 'ROLE_CODE_IS_EMPTY', 'status', 400)::text;
 		END IF;
 		
-		PERFORM workspaces.check_access_force(entity, l_id);
+		PERFORM workspaces.check_access_force(entity, l_id, ARRAY['root.workspace.write']::ltree[]);
+
 		insert into users.users_workspaces(user_id, workspace_id, role_code)
 		values (a_user_id, l_id, l_role_code::ltree)
 		on conflict (user_id, workspace_id) do update
 			set role_code = excluded.role_code;
+
 END;
 $$ LANGUAGE plpgsql;
 
@@ -402,3 +414,5 @@ BEGIN
     RETURN l_role_code;
 END;
 $$ LANGUAGE plpgsql;
+
+

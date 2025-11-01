@@ -78,9 +78,11 @@ DECLARE
 BEGIN
     l_id := shared.set_null_if_empty(workspace_data->>'id');
     l_name := shared.set_null_if_empty(workspace_data->>'name');
-		l_entity := ssh.get_auth_entity(workspace_data->'signer');
+		l_entity := ssh.check_auth_force(workspace_data->'signer');
 		l_owner := shared.set_null_if_empty(workspace_data->>'newOwner');
-		PERFORM workspaces.check_access_force(l_entity, l_id);
+		
+		 
+		PERFORM workspaces.check_access_force(l_entity, l_id, ARRAY['root.workspace.write']::ltree[]);
 
     UPDATE workspaces.workspaces u
     	SET
@@ -115,8 +117,8 @@ DECLARE
 		v_detail text;
 BEGIN
   l_id := shared.set_null_if_empty(workspace_data->>'id');
-	l_entity := ssh.get_auth_entity(workspace_data->'signer');
-	PERFORM workspaces.check_access_force(l_entity, l_id);
+	l_entity := ssh.check_auth_force(workspace_data->'signer');
+	PERFORM workspaces.check_access_force(l_entity, l_id, ARRAY['root.workspace.write.admin']::ltree[]);
 
   DELETE FROM workspaces.workspaces u
   	WHERE id = l_id
@@ -141,21 +143,30 @@ END;
 $$ LANGUAGE plpgsql;
 
 
-CREATE OR REPLACE FUNCTION workspaces.check_access_force(entity ssh.AuthEntity, workspace_id uuid)
+CREATE OR REPLACE FUNCTION workspaces.check_access_force(entity ssh.AuthEntity, workspace_id uuid, a_selectors ltree[])
 RETURNS void AS $$
 DECLARE
 	l_res uuid;
-	l_workspace_id uuid;	
+	l_workspace_id uuid;
+	l_workspace_owner uuid;
 BEGIN
-	entity := ssh.check_auth_force(entity);
-	select id from workspaces.workspaces
-	where id = workspace_id and owner = entity.id
-	into l_workspace_id;	
+
+	select id, owner from workspaces.workspaces
+	where id = workspace_id
+	into l_workspace_id, l_workspace_owner;	
+
 	if (l_workspace_id is null) then
 		raise exception 
     	using
 				ERRCODE = 'EJSON', 
 				DETAIL = jsonb_build_object('code', 'WORKSPACE_NO_ACCESS', 'status', 401)::text;
 	end if;
+
+	if (entity.id = l_workspace_owner) then
+		return;
+	end if;
+	
+	perform users.check_workspace_selectors_force(entity.id, workspace_id, a_selectors);
+
 END;
 $$ LANGUAGE plpgsql;
