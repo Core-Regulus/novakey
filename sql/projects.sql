@@ -313,6 +313,8 @@ BEGIN
 		
 		select jsonb_build_object(
 							'id', p.id,
+							'name', p.name,
+							'description', p.description,
 							'keys', k.keys,
 				      'status', 200
 					 ) from projects.projects p
@@ -333,8 +335,6 @@ BEGIN
 			WHEN others THEN
 				GET STACKED DIAGNOSTICS
   	      v_detail = PG_EXCEPTION_DETAIL;
-				RETURN shared.handle_exception('Can`t set project', SQLSTATE, v_detail, SQLERRM);
+				RETURN shared.handle_exception('Can`t get project', SQLSTATE, v_detail, SQLERRM);
 END;
 $$ LANGUAGE plpgsql;
-
-
