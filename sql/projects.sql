@@ -315,6 +315,8 @@ BEGIN
 							'id', p.id,
 							'name', p.name,
 							'description', p.description,
+							'workspaceId', p.workspace_id,
+							'roleCode', users.get_user_project_role(l_id, l_signer.id),
 							'keys', k.keys,
 				      'status', 200
 					 ) from projects.projects p

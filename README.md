@@ -38,7 +38,7 @@ workspace:
         value: # Key value 2 #
     users:
       - key: # ed25519 public key of the user to grant access #
-        roleCode: Project Reader
+        roleName: Project Reader
 ```
 
 💡 *This file initializes your project configuration. You can modify it later — all updates will be automatically reflected.*  

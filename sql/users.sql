@@ -301,7 +301,7 @@ RETURNS ltree AS $$
 declare
 	l_res ltree;
 BEGIN
-	select p.selector_code from users.users_workspaces w
+	select w.role_code from users.users_workspaces w
 	inner join roles.profiles p on (p.role_code = w.role_code)
 	where (w.user_id = a_user_id and w.workspace_id = a_workspace_id and p.selector_code = any(selectors))
 	into l_res
@@ -414,5 +414,7 @@ BEGIN
     RETURN l_role_code;
 END;
 $$ LANGUAGE plpgsql;
+
+select * from users.users_workspaces;
 
 

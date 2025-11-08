@@ -174,6 +174,7 @@ BEGIN
 							'id', id,
 							'name', name,
 							'description', description,
+							'roleCode', users.get_user_workspace_role(l_id, l_signer.id),
 				      'status', 200
 					 ) from workspaces.workspaces
 		into res;
