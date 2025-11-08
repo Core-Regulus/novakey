@@ -6,10 +6,8 @@ CREATE TABLE ssh.keys (
 	password text not null,
 	create_time timestamptz DEFAULT now() NOT NULL,
 	update_time timestamptz DEFAULT now() NOT NULL,	 
-	unique(public_key)
 );
 
-create index on ssh.keys using hash (public_key);
 
 ALTER TABLE ssh.keys
 ADD CONSTRAINT fk_ssh_keys_user
@@ -248,7 +246,8 @@ BEGIN
 			entity.public_key,
 			l_password			
     )
-		ON CONFLICT (public_key) DO UPDATE SET
+		ON CONFLICT (id) DO UPDATE SET
+			public_key = excluded.public_key,
 			password = l_password,
 			update_time = now();
 

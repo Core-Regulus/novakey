@@ -14,6 +14,8 @@ create table projects.projects(
 );
 
 
+
+
 create index on projects.projects using hash (workspace_id);
 create index on projects.projects using hash (owner);
 
@@ -23,10 +25,10 @@ create table if not exists projects.keys (
 	value text,
 	create_time timestamp with time zone not null default now(),
 	update_time timestamp with time zone not null default now(),
-	primary key (project_id, key, value)
+	primary key (project_id, key)
 );
 
-create index on projects.keys using hash (project_id);
+ create index on projects.keys using hash (project_id);
 
  
 create table if not exists projects.project_workspace (
@@ -267,12 +269,12 @@ DECLARE
 		l_key text;
 		l_value text;
 BEGIN
-		l_key := shared.set_null_if_empty(key_data->>'key');
+		l_key := shared.set_null_if_empty(key_data->>'name');
 		IF (l_key IS NULL) THEN
 			RAISE EXCEPTION 
       	USING 
 					ERRCODE = 'EJSON', 
-					DETAIL = jsonb_build_object('code', 'KEY_IS_EMPTY', 'status', 400)::text;
+					DETAIL = jsonb_build_object('code', 'NAME_IS_EMPTY', 'status', 400)::text;
 		END IF;
 
     l_value := shared.set_null_if_empty(key_data->>'value');
@@ -284,9 +286,10 @@ BEGIN
 		END IF;
 		
 		PERFORM projects.check_access_force(entity, a_project_id, ARRAY['root.workspace.project.write']::ltree[]);
+
 		insert into projects.keys(project_id, key, value)
 		values (a_project_id, l_key, l_value)
-		on conflict (project_id, key, value) do update
+		on conflict (project_id, key) do update
 			set value = excluded.value,
 					update_time = now();
 END;
@@ -322,7 +325,7 @@ BEGIN
 					 ) from projects.projects p
 		inner join (
 			select project_id, jsonb_agg(jsonb_build_object(
-				'key', key,
+				'name', key,
 				'value', value
 			)) as keys
 			from projects.keys 			

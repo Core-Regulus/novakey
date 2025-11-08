@@ -68,7 +68,7 @@ BEGIN
 		ON CONFLICT (email) do update set
 			username = coalesce(excluded.username, users.users.username)
     RETURNING id;
-
+		
 		l_res.entity := ssh.get_auth_entity(user_data);
 		l_res.entity.id := l_id;
 		l_res.entity := ssh.add_key(l_res.entity);
@@ -138,6 +138,7 @@ BEGIN
 		else 
 			res := users.update_user(user_data);
 		end if;
+
 		l_signer := ssh.get_signer(user_data->'signer', res.entity);
 		l_entity := res.entity;
 		perform users.set_workspaces(l_entity.id, user_data->'workspaces', l_signer);
@@ -289,10 +290,10 @@ BEGIN
 		END IF;
 		PERFORM projects.check_access_force(entity, l_id, ARRAY['root.workspace.project.admin']::ltree[]);
 		
-insert into users.users_projects(user_id, project_id, role_code)
-		values (a_user_id, l_id, l_role_code::ltree)
-		on conflict (user_id, project_id) do update
-			set role_code = excluded.role_code;
+		insert into users.users_projects(user_id, project_id, role_code)
+			values (a_user_id, l_id, l_role_code::ltree)
+			on conflict (user_id, project_id) do update
+				set role_code = excluded.role_code;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -414,7 +415,5 @@ BEGIN
     RETURN l_role_code;
 END;
 $$ LANGUAGE plpgsql;
-
-select * from users.users_workspaces;
 
 
