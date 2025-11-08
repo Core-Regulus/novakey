@@ -30,6 +30,8 @@ github.com/core-regulus/novakey-types-go v0.1.22 h1:0zzWxsc2aWleDTzI+KjL6sZF8gMc
 github.com/core-regulus/novakey-types-go v0.1.22/go.mod h1:Q9oaPLxA4XmmopQw0WxzZPMLoKr9YEBOrcoWcz2UCqs=
 github.com/core-regulus/novakey-types-go v0.1.25 h1:nG5wOCEtMpHcqlHHMC3YZiuUS6qPZhl8YklVqyR7uLU=
 github.com/core-regulus/novakey-types-go v0.1.25/go.mod h1:Q9oaPLxA4XmmopQw0WxzZPMLoKr9YEBOrcoWcz2UCqs=
+github.com/core-regulus/novakey-types-go v0.1.26 h1:3RCjLF+oHP67/+I1ma23+O5SQIjljjmILh8vtzfLqHk=
+github.com/core-regulus/novakey-types-go v0.1.26/go.mod h1:Q9oaPLxA4XmmopQw0WxzZPMLoKr9YEBOrcoWcz2UCqs=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/gabriel-vasile/mimetype v1.4.8 h1:FfZ3gj38NjllZIeJAmMhr+qKL8Wu+nOoI3GqacKw1NM=
 github.com/gabriel-vasile/mimetype v1.4.8/go.mod h1:ByKUIKGjh1ODkGM1asKUbQZOLGrPjydw3hYPU2YU9t8=
